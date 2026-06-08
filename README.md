@@ -6,6 +6,14 @@ Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable
 
 ---
 
+## The idea
+
+The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE's release cycle. Polypore is structured to keep up. Every surface is a sandboxed panel behind a shared contract. Any piece of the IDE can be swapped, extended, or dropped without touching the core.
+
+This is not a code editor with an agent panel added later. The layout, the memory system, the debug tooling, and the MCP server are all designed around the agent as the primary actor.
+
+---
+
 ## Panels
 
 Eight panels are available from the `+` tab button:
