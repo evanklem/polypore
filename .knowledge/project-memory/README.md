@@ -1,3 +1,0 @@
-# project memory
-
-Memory base.

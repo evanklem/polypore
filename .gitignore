@@ -35,3 +35,19 @@ yarn-error.log*
 /reports/
 /mockup.html
 /preview-theme.html
+
+# IDE config
+/.idea/
+
+# claude code agent config and memory
+/.claude/
+
+# knowledge base (local agent memory)
+/.knowledge/
+
+# dev-only preview entry points
+/src/_mockup-render/
+/src/_devpreview/
+
+# polypore runtime state
+/.polypore/mcp-state.json

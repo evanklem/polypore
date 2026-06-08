@@ -1843,14 +1843,14 @@ test('documents base selector hides absolute folder paths under base names', asy
       {
         id: 'global-memory',
         name: 'chat memory',
-        root: '/home/klemlitos/Dev/memory',
+        root: '/home/user/memory',
         scope: 'global',
         suggestedScope: 'global',
       },
       {
         id: 'project-memory',
         name: 'project memory',
-        root: '/home/klemlitos/Dev/polypore/.knowledge/project-memory',
+        root: '/home/user/project/.knowledge/project-memory',
         scope: 'project',
         suggestedScope: 'project',
       },
@@ -1878,9 +1878,9 @@ test('documents base selector hides absolute folder paths under base names', asy
 
   expect(within(globalGroup).getByText('chat memory')).toBeInTheDocument();
   expect(within(projectGroup).getByText('project memory')).toBeInTheDocument();
-  expect(within(globalGroup).queryByText('/home/klemlitos/Dev/memory')).not.toBeInTheDocument();
-  expect(within(projectGroup).queryByText('/home/klemlitos/Dev/polypore/.knowledge/project-memory')).not.toBeInTheDocument();
-  expect(screen.getByText('/home/klemlitos/Dev/polypore/.knowledge/project-memory')).toBeInTheDocument();
+  expect(within(globalGroup).queryByText('/home/user/memory')).not.toBeInTheDocument();
+  expect(within(projectGroup).queryByText('/home/user/project/.knowledge/project-memory')).not.toBeInTheDocument();
+  expect(screen.getByText('/home/user/project/.knowledge/project-memory')).toBeInTheDocument();
 });
 
 test('documents can open a browser folder base', async () => {
