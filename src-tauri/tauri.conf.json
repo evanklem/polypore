@@ -1,0 +1,50 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Polypore",
+  "version": "0.1.0",
+  "identifier": "dev.polypore.app",
+  "build": {
+    "beforeDevCommand": "npm run dev:tauri",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "Polypore",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 700,
+        "decorations": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "capabilities": [
+        {
+          "identifier": "main-window",
+          "description": "Allow the main Polypore window to call the desktop shell commands registered by the app.",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:event:default",
+            "core:window:default",
+            "core:webview:default",
+            "updater:default"
+          ]
+        }
+      ],
+      "csp": "default-src 'self' tauri://localhost http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://localhost:* https://localhost:* ws://127.0.0.1:* wss://127.0.0.1:* ws://[::1]:* wss://[::1]:* ws://localhost:* wss://localhost:*; img-src 'self' data: blob: plugin: http://plugin.localhost https://plugin.localhost; style-src 'self' 'unsafe-inline' http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://localhost:* https://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://localhost:* https://localhost:*; connect-src 'self' ipc: tauri: http://ipc.localhost ws://127.0.0.1:* wss://127.0.0.1:* ws://[::1]:* wss://[::1]:* ws://localhost:* wss://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://localhost:* https://localhost:*; frame-src plugin: http://plugin.localhost https://plugin.localhost http: https:"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": [],
+      "pubkey": ""
+    }
+  }
+}

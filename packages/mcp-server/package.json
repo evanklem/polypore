@@ -1,0 +1,14 @@
+{
+  "name": "@polypore/mcp-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "polypore-ide": "src/server.mjs"
+  },
+  "scripts": {
+    "dev": "node src/server.mjs",
+    "test": "node src/server.mjs < ../../scripts/mcp-smoke.jsonl",
+    "typecheck": "node --check src/server.mjs"
+  }
+}

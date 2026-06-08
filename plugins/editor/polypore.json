@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.editor",
+  "title": "editor",
+  "icon": "{}",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["editor.read", "editor.write", "diagnostics.read", "workspace.write", "debug.read", "debug.control", "terminal.spawn"],
+  "capabilities": [],
+  "category": "editor",
+  "defaultArea": "center"
+}

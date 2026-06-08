@@ -10,6 +10,11 @@
 
 # production
 /build
+/dist
+
+# tauri / typescript build output
+/src-tauri/target
+/tsconfig.tsbuildinfo
 
 # misc
 .DS_Store
@@ -21,3 +26,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# claude code agent worktrees
+.claude/worktrees/

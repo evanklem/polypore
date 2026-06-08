@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en"
+      data-radius="calm" data-blur="two-tier" data-density="comfortable"
+      data-seam="shared" data-accent="honey">
+<head>
+<meta charset="utf-8" />
+<title>polypore — UI unification · live gallery</title>
+<link rel="stylesheet" href="_tokens.css" />
+<link rel="stylesheet" href="_app.css" />
+<style>
+  body { margin: 0; height: 100vh; display: grid; grid-template-rows: auto 1fr; background: #060504; font-family: var(--mono); }
+
+  /* ── control rail ─────────────────────────────────────────────────── */
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 14px;
+         border-bottom: 1px solid var(--accent-22); background: rgba(0,0,0,0.7); color: var(--muted); font-size: 11px; }
+  .ctl__group { display: flex; align-items: center; gap: 5px; }
+  .ctl__label { color: var(--accent); letter-spacing: 0.04em; margin-right: 2px; }
+  .ctl button { padding: 3px 9px; border: 1px solid var(--accent-22); border-radius: 5px;
+                background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+  .ctl button:hover { color: var(--ink); border-color: var(--accent-48); }
+  .ctl button.on { color: #0a0807; background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .ctl__hint { margin-left: auto; color: var(--muted); opacity: 0.7; max-width: 360px; }
+  .ctl__hint b { color: var(--accent); }
+
+  .viewport { min-height: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+  <div class="ctl">
+    <div class="ctl__group"><span class="ctl__label">radius</span>
+      <button data-dial="radius" data-val="tight">tight</button>
+      <button data-dial="radius" data-val="calm">calm</button>
+      <button data-dial="radius" data-val="round">round</button></div>
+    <div class="ctl__group"><span class="ctl__label">seam</span>
+      <button data-dial="seam" data-val="shared">shared gutter</button>
+      <button data-dial="seam" data-val="quiet">quiet edge</button>
+      <button data-dial="seam" data-val="doubled">doubled (today)</button></div>
+    <div class="ctl__group"><span class="ctl__label">blur/perf</span>
+      <button data-dial="blur" data-val="two-tier">two-tier</button>
+      <button data-dial="blur" data-val="single">single</button>
+      <button data-dial="blur" data-val="none">none</button></div>
+    <div class="ctl__group"><span class="ctl__label">density</span>
+      <button data-dial="density" data-val="comfortable">comfortable</button>
+      <button data-dial="density" data-val="compact">compact</button></div>
+    <div class="ctl__group"><span class="ctl__label">accent (theme)</span>
+      <button data-dial="accent" data-val="honey">honey</button>
+      <button data-dial="accent" data-val="ember">ember</button>
+      <button data-dial="accent" data-val="cool">cool</button>
+      <button data-dial="accent" data-val="moss">moss</button>
+      <button data-dial="accent" data-val="mono">mono</button></div>
+    <div class="ctl__hint">Flip <b>seam → doubled (today)</b> to see the bright doubled edge you flagged, then back to <b>shared gutter</b>. Functional color (file types, status dots) stays put as you change the <b>accent</b> — only chrome re-themes.</div>
+  </div>
+
+  <div class="viewport">
+    <div class="app">
+      <!-- top bar -->
+      <div class="topbar">
+        <span class="topbar__brand">polypore</span>
+        <span class="topbar__crumbs">~/Dev/polypore · <b>src/App.tsx</b></span>
+        <span class="topbar__actions"><button class="chip">⌘K</button><button class="chip">share</button></span>
+      </div>
+
+      <!-- workspace -->
+      <div class="body">
+        <!-- LEFT DOCK -->
+        <div class="dock">
+          <section class="panel panel--active">
+            <div class="panel__head"><span class="panel__pill">▸</span><span class="panel__title">files</span><span class="panel__sep"></span><span class="panel__meta">polypore</span>
+              <span class="panel__ctl"><button>?</button><button>⚙</button></span></div>
+            <div class="panel__body">
+              <div class="tree">
+                <div class="tree__row tree__row--folder">▾ src</div>
+                <div class="tree__row" aria-selected="true" style="padding-left:20px"><span class="ico ico--ts">TS</span> App.tsx</div>
+                <div class="tree__row" style="padding-left:20px"><span class="ico ico--css">CSS</span> glass.css</div>
+                <div class="tree__row" style="padding-left:20px"><span class="ico ico--ts">TS</span> PanelSurface.tsx</div>
+                <div class="tree__row tree__row--folder" style="padding-left:20px">▾ styles</div>
+                <div class="tree__row" style="padding-left:34px"><span class="ico ico--css">CSS</span> tokens.css</div>
+                <div class="tree__row" style="padding-left:34px"><span class="ico ico--json">{}</span> theme.json</div>
+                <div class="tree__row" style="padding-left:20px"><span class="ico ico--env">ENV</span> .env.local</div>
+              </div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel__head"><span class="panel__pill">◇</span><span class="panel__title">formation</span><span class="panel__sep"></span><span class="panel__meta">3 agents</span>
+              <span class="panel__ctl"><button>?</button><button>⚙</button></span></div>
+            <div class="panel__body">
+              <div class="section"><span class="section__label">team</span><span class="section__rule"></span></div>
+              <div class="nodes">
+                <div class="node node--running"><span class="node__dot"></span><span class="node__name">coder</span><span class="node__role">running</span></div>
+                <div class="node node--idle"><span class="node__dot"></span><span class="node__name">overseer</span><span class="node__role">idle</span></div>
+                <div class="node node--missing"><span class="node__dot"></span><span class="node__name">verifier</span><span class="node__role">missing</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- CENTER -->
+        <div class="center">
+          <section class="panel">
+            <div class="panel__head" style="padding:0">
+              <div class="tabs">
+                <span class="tab" aria-selected="true">App.tsx <span class="tab__x">×</span></span>
+                <span class="tab">glass.css <span class="tab__x">×</span></span>
+                <span class="tab">tokens.css <span class="tab__x">×</span></span>
+              </div>
+              <span class="panel__ctl" style="padding-right:8px"><button>?</button><button>⚙</button></span>
+            </div>
+            <div class="panel__body editor">
+              <div class="editor__code">
+                <div class="editor__gutter">1
+2
+3
+4
+5
+6
+7</div>
+                <div class="editor__lines"><span class="tok-com">/* every panel uses one PanelSurface */</span>
+<span class="tok-key">export function</span> PanelSurface(props) {
+  <span class="tok-key">const</span> header = useHeader(<span class="tok-str">'files'</span>);
+  <span class="tok-key">return</span> &lt;Panel header={header} /&gt;;
+}
+
+<span class="tok-com">// scale tokens snap it all together</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- RIGHT DOCK -->
+        <div class="dock">
+          <section class="panel">
+            <div class="panel__head"><span class="panel__pill">❖</span><span class="panel__title">memory</span><span class="panel__sep"></span><span class="panel__meta">6 notes</span>
+              <span class="panel__ctl"><button>?</button><button>⚙</button></span></div>
+            <div class="panel__body">
+              <div class="card"><div class="card__title">Mockup is canonical</div><div class="card__hook">restore drifted CSS from docs/mockups…</div></div>
+              <div class="card"><div class="card__title">Skip full test runs</div><div class="card__hook">user runs vitest themselves</div></div>
+              <div class="card"><div class="card__title">Panel consistency</div><div class="card__hook">one stable layout across states</div></div>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel__head"><span class="panel__pill">⊘</span><span class="panel__title">debug</span><span class="panel__sep"></span><span class="panel__meta">2 problems</span>
+              <span class="panel__ctl"><button>?</button><button>⚙</button></span></div>
+            <div class="panel__body">
+              <div class="prob prob--error"><span class="prob__sev">✕</span><span class="prob__msg">Type 'string' is not assignable</span><span class="prob__loc">App.tsx:42</span></div>
+              <div class="prob prob--warn"><span class="prob__sev">!</span><span class="prob__msg">'header' is declared but never read</span><span class="prob__loc">PanelSurface.tsx:18</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- bottom bar -->
+      <div class="bottombar">
+        <span class="bottombar__ok">● ready</span>
+        <span>master</span>
+        <span class="bottombar__spacer"></span>
+        <span>typecheck ✓</span>
+        <span>UTF-8</span>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const root = document.documentElement;
+  function sync() {
+    document.querySelectorAll('.ctl button').forEach(b => {
+      b.classList.toggle('on', root.dataset[b.dataset.dial] === b.dataset.val);
+    });
+  }
+  document.querySelectorAll('.ctl button').forEach(b => {
+    b.addEventListener('click', () => { root.dataset[b.dataset.dial] = b.dataset.val; sync(); });
+  });
+  sync();
+</script>
+</body>
+</html>

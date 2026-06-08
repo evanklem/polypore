@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "polypore-ide": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["packages/mcp-server/src/server.mjs"]
+    }
+  }
+}

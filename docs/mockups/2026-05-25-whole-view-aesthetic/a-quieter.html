@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>polypore — a · quieter glass</title>
+<link rel="stylesheet" href="_shared.css" />
+<style>
+  /* ─── variant A · "Quieter glass" ──────────────────────────────────────────
+   *  same warm vibe — toned down. ambient orbs dimmed, topbar slimmer,
+   *  geometry tightened, fewer glow halos. think "pro IDE chrome".
+   * ──────────────────────────────────────────────────────────────────────── */
+
+  .app-shell {
+    position: relative;
+    display: grid;
+    grid-template-rows: 28px minmax(0, 1fr) 24px;  /* 34/28 → 28/24 (slimmer) */
+    height: 100%;
+    background:
+      radial-gradient(circle at 50% 120%, var(--accent-08), transparent 30rem),
+      linear-gradient(135deg, rgb(15, 11, 8) 0%, rgb(20, 15, 10) 50%, rgb(10, 8, 7) 100%);
+  }
+
+  /* ambient orbs — half opacity, no animation, smaller radii */
+  .app-shell::before {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 18% 24%, var(--accent-18), transparent 14rem),
+      radial-gradient(circle at 82% 76%, var(--accent-14), transparent 16rem);
+    opacity: 0.55;
+    filter: blur(40px);
+  }
+
+  .app-shell > * { position: relative; z-index: 2; }
+
+  .topbar, .bottombar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 8px;
+    background: rgba(var(--c-surface-1-rgb), 0.78);
+    backdrop-filter: blur(14px) saturate(1.2);
+    font-size: 11px;
+  }
+  .topbar { border-bottom: 1px solid var(--accent-22); justify-content: flex-start; }
+  .bottombar { border-top: 1px solid var(--accent-18); justify-content: flex-end; color: var(--muted); font-size: 10px; }
+
+  .seg {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 20px; padding: 0 8px;
+    border: 1px solid var(--accent-18);
+    border-radius: 3px;  /* 5 → 3 (tighter) */
+    color: var(--muted);
+    background: rgba(var(--c-ink-rgb), 0.03);
+  }
+  .seg strong { color: var(--ink); font-weight: 500; }
+  .seg--accent { color: var(--accent); border-color: var(--accent-28); }
+  .seg .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+
+  .dock {
+    display: grid;
+    grid-template-columns: 220px 1fr 280px;
+    gap: 4px;  /* sash 6 → 4 */
+    padding: 4px;
+  }
+
+  .panel {
+    display: grid;
+    grid-template-rows: 24px 1fr;
+    background: rgba(var(--c-surface-3-rgb), 0.7);
+    border: 1px solid var(--accent-14);  /* hairline — was 22-26 */
+    border-radius: 4px;  /* 5-9 → 4 */
+    overflow: hidden;
+    backdrop-filter: blur(12px);
+  }
+
+  .panel__tabs {
+    display: flex; align-items: stretch;
+    border-bottom: 1px solid var(--accent-12);
+    background: rgba(var(--c-surface-2-rgb), 0.5);
+  }
+  .panel__tab {
+    padding: 0 10px;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    border-right: 1px solid var(--accent-10);
+  }
+  .panel__tab--active { color: var(--ink); background: rgba(var(--c-surface-3-rgb), 0.8); border-bottom: 1px solid var(--accent); }
+  .panel__tab small { color: var(--muted); font-size: 9px; opacity: 0.6; }
+
+  .panel__body { padding: 12px; color: var(--muted); font-size: 11px; overflow: auto; line-height: 1.55; }
+  .panel__body code { color: var(--ink); font-size: 11px; }
+
+  /* sample row — fake editor lines */
+  .line { display: grid; grid-template-columns: 24px 1fr; gap: 10px; }
+  .line span:first-child { color: var(--muted); opacity: 0.45; text-align: right; }
+  .kw { color: var(--accent); }
+  .str { color: var(--accent-deep); }
+
+  /* sample sidebar tree */
+  .tree-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 2px; color: var(--ink); }
+  .tree-row:hover { background: var(--accent-08); }
+  .tree-row.active { background: var(--accent-12); border-left: 2px solid var(--accent); padding-left: 2px; }
+  .tree-row.muted { color: var(--muted); }
+  .tree-row svg { opacity: 0.7; }
+
+  .label { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="mockup-frame">
+  <div class="mockup-frame__strip">
+    <div>
+      <h1>a · quieter glass</h1>
+      <p>Same warm vibe — toned down. Topbar 34→28px, panels hairline-bordered (1px accent-14), 4px radii, ambient orbs at 55% opacity and static. Reads as a "pro IDE" chrome.</p>
+    </div>
+    <nav class="mockup-frame__nav">
+      <a href="a-quieter.html" class="active">a · quieter</a>
+      <a href="b-flat.html">b · flat</a>
+      <a href="c-deep.html">c · deep atmospheric</a>
+      <a href="d-riced.html">d · riced TUI</a>
+    </nav>
+  </div>
+
+  <div class="mockup-frame__viewport">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="seg seg--accent"><span class="dot"></span><strong>polypore</strong></div>
+        <div class="seg">main <span style="opacity:0.5">⌄</span></div>
+        <div class="seg">⎇ master</div>
+        <div class="seg">build · idle</div>
+        <div class="seg">claude-opus-4-7</div>
+        <div style="flex:1"></div>
+        <div class="seg">⚙</div>
+        <div class="seg">?</div>
+      </header>
+
+      <div class="dock">
+        <div class="panel">
+          <div class="panel__tabs">
+            <div class="panel__tab panel__tab--active">files <small>14</small></div>
+          </div>
+          <div class="panel__body">
+            <div class="tree-row"><span style="width:8px;text-align:center;opacity:0.5">▾</span> src/</div>
+            <div style="padding-left:14px">
+              <div class="tree-row">App.tsx</div>
+              <div class="tree-row active">App.css</div>
+              <div class="tree-row">index.tsx</div>
+              <div class="tree-row muted">honey-glass.css</div>
+            </div>
+            <div class="tree-row"><span style="width:8px;text-align:center;opacity:0.5">▸</span> plugins/</div>
+            <div class="tree-row"><span style="width:8px;text-align:center;opacity:0.5">▸</span> docs/</div>
+            <div class="tree-row"><span style="width:8px;text-align:center;opacity:0.5">▸</span> styles/</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__tabs">
+            <div class="panel__tab panel__tab--active">App.css <small>· 7880 lines</small></div>
+            <div class="panel__tab">tokens.css</div>
+            <div class="panel__tab">component.tsx</div>
+          </div>
+          <div class="panel__body" style="font-family: var(--mono); white-space: pre;">
+<div class="line"><span>1</span><span><span class="kw">.app-shell</span> {</span></div>
+<div class="line"><span>2</span><span>  position: <span class="kw">relative</span>;</span></div>
+<div class="line"><span>3</span><span>  display: <span class="kw">grid</span>;</span></div>
+<div class="line"><span>4</span><span>  grid-template-rows: <span class="str">28px minmax(0, 1fr) 24px</span>;</span></div>
+<div class="line"><span>5</span><span>  color: <span class="kw">var</span>(<span class="str">--ink</span>);</span></div>
+<div class="line"><span>6</span><span>  background: <span class="kw">var</span>(<span class="str">--surface-base</span>);</span></div>
+<div class="line"><span>7</span><span>}</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__tabs">
+            <div class="panel__tab panel__tab--active">memory</div>
+            <div class="panel__tab">chat</div>
+          </div>
+          <div class="panel__body">
+            <div style="display:flex;gap:5px;margin-bottom:8px">
+              <button style="flex:1;height:22px;border:1px solid var(--accent-22);border-radius:3px;color:var(--ink);font-size:10px">+ base</button>
+              <button style="flex:1;height:22px;border:1px solid var(--accent-14);border-radius:3px;color:var(--muted);font-size:10px">folder</button>
+            </div>
+            <div style="text-align:center;color:var(--muted);font-size:9px;letter-spacing:0.06em;margin:8px 0 4px">— global —</div>
+            <div class="tree-row active">project-memory</div>
+            <div class="tree-row">conventions</div>
+            <div style="text-align:center;color:var(--muted);font-size:9px;letter-spacing:0.06em;margin:8px 0 4px">— project —</div>
+            <div class="tree-row muted">no bases yet</div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="bottombar">
+        <span>UTF-8</span><span>·</span><span>LF</span><span>·</span><span>TypeScript</span><span>·</span><span>Ln 24, Col 8</span>
+      </footer>
+    </div>
+  </div>
+</div>
+</body>
+</html>

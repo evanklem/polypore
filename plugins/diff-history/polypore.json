@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.diff-history",
+  "title": "diff & history",
+  "icon": "+-",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["editor.read", "history.read"],
+  "capabilities": ["tool-use"],
+  "category": "other",
+  "defaultArea": "right"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.preview",
+  "title": "preview",
+  "icon": "run",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["editor.read", "preview.read", "preview.register", "preview.refresh", "terminal.spawn", "terminal.stop", "terminal.write", "ui.openExternal"],
+  "capabilities": ["streaming"],
+  "category": "runtime",
+  "defaultArea": "center"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.chat",
+  "title": "chat",
+  "icon": "/>",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["state.read", "terminal.spawn", "terminal.stop", "terminal.write"],
+  "capabilities": [],
+  "category": "agent",
+  "defaultArea": "left"
+}

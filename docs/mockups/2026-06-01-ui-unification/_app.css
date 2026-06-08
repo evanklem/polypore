@@ -1,0 +1,119 @@
+/* ─────────────────────────────────────────────────────────────────────────
+ * UI-unification mockup — a realistic Polypore layout that consumes ONLY the
+ * scale + seam tokens from _tokens.css. Nothing here hardcodes a radius,
+ * padding, or blur. Functional color (file type, state) keeps its hue — it's
+ * signal, not chrome. Flip the dials in gallery.html to re-style the whole app.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font-family: var(--mono); color: var(--ink); font-size: 13px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+/* static warm ambient — gradient only, no animated orbs (perf constraint) */
+.app {
+  height: 100%; display: grid; grid-template-rows: auto 1fr auto;
+  background:
+    radial-gradient(120% 90% at 12% -10%, rgba(var(--c-accent-rgb), 0.10), transparent 55%),
+    radial-gradient(120% 90% at 100% 110%, rgba(var(--c-accent-deep-rgb), 0.08), transparent 55%),
+    linear-gradient(135deg, rgb(var(--c-surface-2-rgb)) 0%, rgb(var(--c-surface-3-rgb)) 46%, rgb(var(--c-surface-1-rgb)) 100%);
+}
+
+/* ── top bar ────────────────────────────────────────────────────────── */
+.topbar { display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-3); height: 38px; border-bottom: 1px solid var(--line-quiet); background: var(--surface-bar); }
+.topbar__brand { color: var(--accent); font-weight: 700; letter-spacing: 0.06em; }
+.topbar__crumbs { color: var(--muted); flex: 1; }
+.topbar__crumbs b { color: var(--ink); font-weight: 600; }
+.topbar__actions { display: flex; gap: var(--sp-1); }
+
+/* ── workspace body: SHARED GUTTER between docks/center ───────────────── */
+.body {
+  display: grid; grid-template-columns: 260px 1fr 300px;
+  gap: var(--gutter); padding: var(--gutter); background: var(--gutter-bg);
+  min-height: 0;
+}
+.dock { display: grid; grid-auto-rows: 1fr; gap: var(--gutter); background: var(--gutter-bg); min-height: 0; }
+.center { display: flex; min-height: 0; }
+
+/* ── the shared PANEL primitive (every surface uses this) ────────────── */
+.panel {
+  display: flex; flex-direction: column; min-height: 0; flex: 1;
+  border: var(--panel-edge) solid var(--edge-color, transparent);
+  border-radius: var(--r-card);
+  background: var(--panel);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--blur-panel); -webkit-backdrop-filter: var(--blur-panel);
+  overflow: hidden;
+}
+.panel--deep { background: var(--panel-deep); }
+/* only the FOCUSED panel glows — kills "everything is bright at once" */
+.panel--active { border-color: var(--line); box-shadow: var(--shadow-card), 0 0 0 1px var(--accent-18), 0 0 18px var(--accent-12); }
+
+.panel__head { display: flex; align-items: center; gap: var(--sp-2); height: var(--head-h); padding: 0 var(--sp-2); border-bottom: 1px solid var(--line-quiet); background: var(--surface-bar); color: var(--muted); }
+.panel__pill { color: var(--accent); }
+.panel__title { color: var(--ink); font-weight: 600; }
+.panel__sep { width: 1px; height: 14px; background: var(--accent-22); }
+.panel__meta { font-size: 11px; color: var(--muted); }
+.panel__ctl { margin-left: auto; display: flex; gap: var(--sp-1); }
+.panel__ctl button { height: 22px; padding: 0 var(--sp-2); color: var(--muted); border: 1px solid var(--line-quiet); border-radius: var(--r-control); background: transparent; font-size: 11px; }
+.panel__ctl button:hover { color: var(--ink); border-color: var(--line); background: var(--accent-08); }
+.panel__body { padding: var(--pad); overflow: auto; min-height: 0; flex: 1; }
+
+.section { display: flex; align-items: center; gap: var(--sp-2); margin: 0 0 var(--sp-2); }
+.section__label { color: var(--accent); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.section__rule { flex: 1; height: 1px; background: var(--line-quiet); }
+
+.empty { display: grid; place-items: center; gap: var(--sp-2); padding: var(--sp-5); text-align: center; color: var(--muted); height: 100%; }
+.empty__mark { font-size: 22px; color: var(--accent); opacity: 0.7; }
+
+.tabs { display: flex; gap: var(--sp-1); padding: var(--sp-1); }
+.tab { display: inline-flex; align-items: center; gap: var(--sp-2); height: var(--row-h); padding: 0 var(--sp-2) 0 var(--sp-3); border: 1px solid var(--accent-18); border-radius: var(--r-control); background: rgba(var(--c-surface-1-rgb), 0.5); color: var(--muted); white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-color: var(--line); background: var(--ink-13); }
+.tab__x { color: var(--muted); }
+
+.chip { display: inline-flex; align-items: center; gap: var(--sp-1); height: 24px; padding: 0 var(--sp-2); border: 1px solid var(--line-quiet); border-radius: var(--r-pill); background: var(--accent-06); color: var(--muted); font-size: 11px; }
+.btn { height: 26px; padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-control); background: var(--accent-08); color: var(--ink); font-size: 12px; }
+.btn:hover { background: var(--accent-12); }
+
+/* ── file tree rows — file-type color is FUNCTIONAL, always shown ─────── */
+.tree { display: flex; flex-direction: column; }
+.tree__row { display: flex; align-items: center; gap: var(--sp-2); height: var(--row-h); padding: 0 var(--sp-2); border-radius: var(--r-control); color: var(--ink); }
+.tree__row:hover { background: var(--accent-06); }
+.tree__row[aria-selected="true"] { background: var(--accent-12); }
+.tree__row--folder { color: var(--muted); }
+.ico { display: inline-grid; place-items: center; width: 21px; height: 16px; border: 1px solid var(--ink-13); border-radius: 3px; font-size: 8px; font-weight: 700; line-height: 1; color: var(--accent-pale); background: var(--accent-06); }
+.ico--ts  { color: var(--ftype-ts);   border-color: color-mix(in srgb, var(--ftype-ts) 34%, transparent);   background: color-mix(in srgb, var(--ftype-ts) 8%, transparent); }
+.ico--css { color: var(--ftype-css);  border-color: color-mix(in srgb, var(--ftype-css) 34%, transparent);  background: color-mix(in srgb, var(--ftype-css) 8%, transparent); }
+.ico--json{ color: var(--ftype-json); border-color: color-mix(in srgb, var(--ftype-json) 32%, transparent); background: color-mix(in srgb, var(--ftype-json) 8%, transparent); }
+.ico--env { color: var(--ftype-env);  border-color: color-mix(in srgb, var(--ftype-env) 34%, transparent);  background: color-mix(in srgb, var(--ftype-env) 8%, transparent); }
+
+/* ── agent formation nodes — state color is FUNCTIONAL, always shown ──── */
+.nodes { display: grid; gap: var(--sp-2); }
+.node { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-quiet); border-radius: var(--r-control); background: var(--accent-06); }
+.node__dot { width: 8px; height: 8px; border-radius: var(--r-pill); background: var(--muted); }
+.node__name { color: var(--ink); }
+.node__role { color: var(--muted); font-size: 11px; margin-left: auto; }
+.node--running .node__dot { background: var(--ok); box-shadow: 0 0 10px rgba(var(--c-ok-rgb),0.5); }
+.node--missing .node__dot { background: var(--danger); }
+.node--idle .node__dot    { background: var(--accent); }
+
+/* ── editor (center) ─────────────────────────────────────────────────── */
+.editor { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.editor__code { display: flex; padding: var(--sp-2) 0; overflow: auto; font-size: 12.5px; line-height: 1.7; }
+.editor__gutter { width: 38px; text-align: right; padding-right: var(--sp-2); color: var(--muted); opacity: 0.5; user-select: none; }
+.editor__lines { flex: 1; white-space: pre; }
+.tok-key { color: var(--accent); } .tok-str { color: var(--accent-pale); } .tok-com { color: var(--muted); opacity: 0.7; }
+
+/* ── memory cards ────────────────────────────────────────────────────── */
+.card { padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2); border: 1px solid var(--line-quiet); border-radius: var(--r-control); background: var(--accent-06); }
+.card__title { color: var(--ink); font-weight: 600; } .card__hook { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+/* ── problems / debug rows — severity color is FUNCTIONAL ────────────── */
+.prob { display: flex; align-items: center; gap: var(--sp-2); height: var(--row-h); padding: 0 var(--sp-2); border-radius: var(--r-control); }
+.prob:hover { background: var(--accent-06); }
+.prob__sev { width: 16px; text-align: center; font-weight: 700; }
+.prob--error .prob__sev { color: var(--danger); } .prob--warn .prob__sev { color: var(--accent); }
+.prob__msg { color: var(--ink); flex: 1; } .prob__loc { color: var(--muted); font-size: 11px; }
+
+/* ── bottom bar ──────────────────────────────────────────────────────── */
+.bottombar { display: flex; align-items: center; gap: var(--sp-3); height: 26px; padding: 0 var(--sp-3); border-top: 1px solid var(--line-quiet); background: var(--surface-bar); color: var(--muted); font-size: 11px; }
+.bottombar__ok { color: var(--ok); } .bottombar__spacer { flex: 1; }

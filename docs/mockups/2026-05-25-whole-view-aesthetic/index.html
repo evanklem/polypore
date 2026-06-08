@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>polypore — whole-view aesthetic · variants</title>
+<link rel="stylesheet" href="_shared.css" />
+<style>
+  body {
+    background: rgb(10, 8, 7);
+    padding: 40px;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  h1 { color: var(--accent); margin: 0 0 4px; font-size: 22px; }
+  h2 { color: var(--ink); margin: 32px 0 8px; font-size: 14px; letter-spacing: 0.04em; }
+  p { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  ul { padding-left: 18px; }
+  li { color: var(--muted); margin-bottom: 4px; font-size: 12px; }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--accent-48); }
+  a:hover { color: var(--ink); border-bottom-color: var(--ink); }
+  .variants { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 18px; }
+  .card { border: 1px solid var(--accent-22); border-radius: 6px; padding: 14px; background: rgba(var(--c-surface-3-rgb), 0.5); }
+  .card h3 { margin: 0 0 6px; color: var(--accent); font-size: 13px; }
+  .card p { font-size: 11px; margin: 0 0 8px; }
+  .card a { font-size: 12px; }
+  .note { padding: 10px 14px; border-left: 2px solid var(--accent); background: var(--accent-08); font-size: 12px; color: var(--ink); border-radius: 0 4px 4px 0; }
+</style>
+</head>
+<body>
+  <h1>whole-view aesthetic — variants</h1>
+  <p>Three directions for the overall app chrome (topbar, dock area, panel borders, bottombar, ambient background). Panel <em>contents</em> are not changing. Each mockup also demonstrates the rename from <code>--honey-*</code> to <code>--accent-*</code> so the personalize panel can later swap the palette in one place.</p>
+
+  <div class="note">
+    All three mockups use <code>--c-accent-rgb: 240, 179, 90</code> — the current honey. Swap that one line and the whole UI re-themes (cool blue, monochrome, sepia, whatever). That's what color-agnostic naming buys you.
+  </div>
+
+  <h2>variants</h2>
+  <div class="variants" style="grid-template-columns: 1fr 1fr 1fr 1fr">
+    <div class="card">
+      <h3>a · quieter glass</h3>
+      <p>Same warm vibe, dialed back. 28px topbar, 4px radii, hairline borders, static low-opacity orbs. Pro IDE chrome.</p>
+      <a href="a-quieter.html">open →</a>
+    </div>
+    <div class="card">
+      <h3>b · flat hairlines</h3>
+      <p>No gradients, no blur, solid surfaces with 1px neutral hairlines. 2px corners. Terminal-multiplexer density.</p>
+      <a href="b-flat.html">open →</a>
+    </div>
+    <div class="card">
+      <h3>c · deep atmospheric</h3>
+      <p>Lean further in. 10px gaps, 10px radii, 24px blur, larger drifting orbs with a violet secondary layer. Floating-glass.</p>
+      <a href="c-deep.html">open →</a>
+    </div>
+    <div class="card">
+      <h3>d · riced TUI</h3>
+      <p>Polybar/eww/tmux vibe. Powerline-chevron modules, i3 workspace tags, bracketed [tab] labels, ASCII dividers. /r/unixporn.</p>
+      <a href="d-riced.html">open →</a>
+    </div>
+  </div>
+
+  <h2>what gets renamed (regardless of pick)</h2>
+  <ul>
+    <li><code>src/honey-glass.css</code> → <code>src/glass.css</code></li>
+    <li><code>--honey-XX</code> → <code>--accent-XX</code> (alpha ladder, ~40 tokens)</li>
+    <li><code>--honey-deep-XX</code> → <code>--accent-deep-XX</code></li>
+    <li><code>--honey</code>, <code>--honey-bright</code> → <code>--accent-deep</code>, <code>--accent</code></li>
+    <li><code>--hg-honey</code>, <code>--hg-honey-deep</code>, <code>--hg-honey-pale</code> → <code>--hg-accent</code>, etc. (or drop the <code>hg-</code> prefix entirely)</li>
+    <li>CSS classes containing "honey" in component files</li>
+    <li>Reference: <code>~22 files</code> touch these names. Mechanical sed-style refactor.</li>
+  </ul>
+
+  <h2>what stays</h2>
+  <ul>
+    <li>RGB triplet palette in <code>tokens.css</code> stays exactly where it is (top of file, well-documented) — that's the personalize panel's hook.</li>
+    <li>Role-named tokens (<code>--ink</code>, <code>--muted</code>, <code>--line</code>, <code>--panel</code>) keep their names — they're already color-agnostic.</li>
+    <li>Surface ladder (<code>--surface-N-NN</code>) already color-agnostic.</li>
+  </ul>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.problems",
+  "title": "problems",
+  "icon": "!",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["editor.read", "diagnostics.read"],
+  "capabilities": [],
+  "category": "verify",
+  "defaultArea": "bottom"
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.debug",
+  "title": "debug",
+  "icon": "db",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["diagnostics.read", "verify.read", "iterate.run", "debug.read", "debug.control"],
+  "capabilities": ["tool-servers"],
+  "category": "verify",
+  "defaultArea": "bottom"
+}

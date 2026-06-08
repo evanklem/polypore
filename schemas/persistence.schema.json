@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/persistence.schema.json",
+  "title": "PersistenceSchemas",
+  "definitions": {
+    "WorkspaceFile": { "$ref": "types.schema.json#/definitions/Workspace" },
+    "VerifyConfigFile": { "$ref": "types.schema.json#/definitions/VerifyConfig" },
+    "FormationFile": { "$ref": "types.schema.json#/definitions/Formation" },
+    "TaskFile": { "type": "object", "additionalProperties": false, "required": ["schemaVersion", "tasks"], "properties": { "schemaVersion": { "const": 1 }, "tasks": { "type": "array", "items": { "$ref": "types.schema.json#/definitions/Task" } } } }
+  },
+  "type": "object",
+  "additionalProperties": true
+}

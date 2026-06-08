@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/rpc/ui.schema.json",
+  "title": "UiRpcSchemas",
+  "definitions": {
+    "ui.notify.params": { "type": "object", "additionalProperties": false, "required": ["level", "msg"], "properties": { "level": { "type": "string", "enum": ["info", "success", "warning", "warn", "error"] }, "msg": { "type": "string", "minLength": 1 } } },
+    "ui.notify.result": { "type": "object", "additionalProperties": false, "required": ["shown"], "properties": { "shown": { "type": "boolean" } } },
+    "ui.confirm.params": { "type": "object", "additionalProperties": false, "required": ["msg"], "properties": { "msg": { "type": "string" } } },
+    "ui.confirm.result": { "type": "object", "additionalProperties": false, "required": ["confirmed"], "properties": { "confirmed": { "type": "boolean" } } },
+    "ui.openExternal.params": { "type": "object", "additionalProperties": false, "required": ["url"], "properties": { "url": { "type": "string", "pattern": "^https?://.+" } } },
+    "ui.openExternal.result": { "type": "object", "additionalProperties": false, "required": ["opened"], "properties": { "opened": { "type": "boolean" } } }
+  },
+  "type": "object",
+  "additionalProperties": true
+}

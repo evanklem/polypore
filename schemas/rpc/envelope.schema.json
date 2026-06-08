@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/rpc/envelope.schema.json",
+  "title": "RpcEnvelope",
+  "oneOf": [
+    { "title": "RpcRequest", "type": "object", "additionalProperties": false, "required": ["kind", "id", "method", "params"], "properties": { "kind": { "const": "request" }, "id": { "type": "number" }, "method": { "type": "string" }, "params": true } },
+    { "title": "RpcSuccessResponse", "type": "object", "additionalProperties": false, "required": ["kind", "id", "ok", "result"], "properties": { "kind": { "const": "response" }, "id": { "type": "number" }, "ok": { "const": true }, "result": true } },
+    { "title": "RpcErrorResponse", "type": "object", "additionalProperties": false, "required": ["kind", "id", "ok", "error"], "properties": { "kind": { "const": "response" }, "id": { "type": "number" }, "ok": { "const": false }, "error": { "$ref": "#/definitions/RpcError" } } },
+    { "title": "RpcEvent", "type": "object", "additionalProperties": false, "required": ["kind", "topic", "payload"], "properties": { "kind": { "const": "event" }, "topic": { "type": "string" }, "payload": true } }
+  ],
+  "definitions": {
+    "RpcError": { "type": "object", "additionalProperties": false, "required": ["code", "message"], "properties": { "code": { "type": "string", "enum": ["permission_not_declared", "permission_not_granted", "method_not_found", "invalid_params", "not_found", "conflict", "unsupported_capability", "internal", "timeout"] }, "message": { "type": "string" }, "data": true } }
+  }
+}

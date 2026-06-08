@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.memory",
+  "title": "memory",
+  "icon": "kb",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["state.read", "editor.read", "knowledge.read", "knowledge.write"],
+  "capabilities": ["memory-dir"],
+  "category": "knowledge",
+  "defaultArea": "right"
+}

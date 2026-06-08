@@ -1,0 +1,33 @@
+use std::fmt::Write as _;
+
+pub const MAX_BROKER_BODY_BYTES: usize = 1024 * 1024;
+
+pub fn broker_token(prefix: &str) -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|err| format!("failed to generate broker token: {err}"))?;
+    Ok(format!("{prefix}-{}", hex_bytes(&bytes)))
+}
+
+fn hex_bytes(bytes: &[u8]) -> String {
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        let _ = write!(&mut encoded, "{byte:02x}");
+    }
+    encoded
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn broker_tokens_use_random_bytes() {
+        let first = broker_token("polypore-test").unwrap();
+        let second = broker_token("polypore-test").unwrap();
+
+        assert!(first.starts_with("polypore-test-"));
+        assert_eq!(first.len(), "polypore-test-".len() + 64);
+        assert_ne!(first, second);
+    }
+}

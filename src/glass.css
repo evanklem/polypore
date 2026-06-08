@@ -1,0 +1,1459 @@
+/* glass.css — tuned overrides imported after App.css so it wins the
+   cascade. one file, organized top-to-bottom:
+     1. tokens
+     2. perf (drag, reduced motion, containment)
+     3. dockview chrome
+     4. unified panel-header
+     5. file tree (chips + path tail)
+     6. preview (new card layout)
+     7. terminal (cleanup + chips)
+     8. chat slash popover
+     9. memory backlinks
+    10. agent canvas + formation node
+    11. quick-actions
+    12. monaco editor surface */
+
+
+/* ===== 1. tokens ===================================================== */
+
+/* moved to src/styles/tokens.css (single source of truth, settings-overridable).
+   glass.css's surface/blur primitives are exposed as --hg-* aliases there. */
+
+/* Surface mode: "solid" should read as an actual opaque workspace, not just a
+   slightly less frosted card. Keep the accent/theme, remove ambient blur and
+   make the main chrome paint normal backgrounds. */
+:root[data-polypore-glass='solid'] {
+  --blur-panel: none;
+  --blur-overlay: none;
+  --hg-blur: none;
+  --panel: rgba(var(--c-surface-2-rgb), 0.96);
+  --panel-deep: rgba(var(--c-surface-1-rgb), 0.98);
+  --surface-section: rgba(var(--c-surface-0-rgb), 0.56);
+  --frost: var(--ink-045);
+}
+
+:root[data-polypore-glass='solid'] :where(.app-shell *, .surface, .surface *, .launcher, .launcher *) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-polypore-glass='solid'] .app-shell {
+  background:
+    linear-gradient(150deg, rgb(var(--c-surface-5-rgb)) 0%, rgb(var(--c-surface-3-rgb)) 42%, rgb(var(--c-surface-1-rgb)) 100%);
+}
+
+:root[data-polypore-glass='solid'] .app-shell::before,
+:root[data-polypore-glass='solid'] .app-shell::after {
+  animation: none !important;
+  filter: none !important;
+  opacity: 0 !important;
+  will-change: auto;
+}
+
+:root[data-polypore-glass='solid'] .polypore-dockview .dv-groupview {
+  background: rgba(var(--c-surface-2-rgb), 0.97) !important;
+  box-shadow: 0 12px 36px var(--shadow-24);
+}
+
+:root[data-polypore-glass='solid'] .polypore-dockview .dv-groupview.dv-active-group {
+  box-shadow: 0 12px 36px var(--shadow-24), 0 0 0 1px var(--accent-18);
+}
+
+:root[data-polypore-glass='solid'] .polypore-dockview .dv-tabs-and-actions-container,
+:root[data-polypore-glass='solid'] .panel-header,
+:root[data-polypore-glass='solid'] .topbar,
+:root[data-polypore-glass='solid'] .bottombar,
+:root[data-polypore-glass='solid'] .surface__bar,
+:root[data-polypore-glass='solid'] .surface__nav,
+:root[data-polypore-glass='solid'] .launcher__secondary {
+  background: rgba(var(--c-surface-1-rgb), 0.96) !important;
+}
+
+:root[data-polypore-glass='solid'] .surface {
+  background: rgb(var(--c-surface-1-rgb)) !important;
+}
+
+
+/* ===== 2. perf ======================================================= */
+
+/* Keep containment on plugin-owned shells only. Dockview's own group/content
+   nodes are active flex/resize participants during sash drags; putting
+   layout/paint/style containment on those internals breaks Dockview's layout
+   contract and can crash WebKitGTK while the sash is being dragged. */
+.preview-surface,
+.terminal-shell,
+.verify-shell,
+.memory-shell,
+.agent-shell,
+.diff-history-shell,
+.code-shell {
+  contain: layout paint style;
+}
+
+/* drag-state perf:
+   - swap heavy backdrop-filters for cheap rgba on shells while dragging
+   - simplify the ambient backing so sash movement does not repaint large
+     animated blur layers
+   - kill transitions/animations only on visible chrome (not every dom
+     node — that universal-selector style invalidation was itself a
+     stall). this list is narrow on purpose. */
+body[data-dv-resizing] .app-shell::before,
+body[data-dv-resizing] .app-shell::after {
+  filter: none !important;
+  /* will-change:transform keeps the orbs on their own GPU compositor layers
+     so their large inset:-34% extent stays off the main paint layer during
+     sash moves. animation and opacity are left alone — on X11 the orbs are
+     cheap enough to keep visible, and the glow is part of the aesthetic. */
+}
+
+body[data-dv-resizing] .panel-header,
+body[data-dv-resizing] .chat-box,
+body[data-dv-resizing] .preview-card,
+body[data-dv-resizing] .terminal,
+body[data-dv-resizing] .topbar,
+body[data-dv-resizing] .bottombar,
+body[data-dv-resizing] .polypore-dockview .dv-tabs-and-actions-container,
+body[data-dv-resizing] .polypore-dockview .dv-active-tab,
+body[data-dv-resizing] .dockview-add__menu {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: none !important;
+}
+
+/* data-dv-dragging: set on <body> while a dockview tab/group drag is in
+   flight. iframes otherwise swallow the native HTML5 drag stream the moment
+   the cursor sweeps off the tab strip onto the panel body, starving dockview
+   of its `dragend` and leaving the tab glued to the cursor. shares the
+   resize rule's pointer-events kill so the drag completes in the parent doc.
+   also mirrors the resize rules to kill expensive CSS during tab drags. */
+body[data-dv-dragging] .app-shell::before,
+body[data-dv-dragging] .app-shell::after {
+  filter: none !important;
+}
+
+body[data-dv-dragging] .panel-header,
+body[data-dv-dragging] .chat-box,
+body[data-dv-dragging] .preview-card,
+body[data-dv-dragging] .terminal,
+body[data-dv-dragging] .topbar,
+body[data-dv-dragging] .bottombar,
+body[data-dv-dragging] .polypore-dockview .dv-tabs-and-actions-container,
+body[data-dv-dragging] .polypore-dockview .dv-active-tab,
+body[data-dv-dragging] .dockview-add__menu {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: none !important;
+}
+
+body[data-dv-dragging] iframe,
+body[data-dv-dragging] .preview-native-frame,
+/* dockview's sash :hover/:active transition has specificity (0,5,0) which
+   beats the base .polypore-dockview .dv-sash { transition:none } rule (0,2,0).
+   use !important to override it during resize so the 0.1s background-color
+   animation doesn't fire after 0.5 s of sustained dragging. */
+body[data-dv-resizing] .polypore-dockview .dv-sash {
+  transition: none !important;
+}
+
+body[data-dv-dragging] iframe,
+body[data-dv-dragging] .preview-native-frame {
+  pointer-events: none !important;
+}
+
+body[data-dv-resizing] iframe,
+body[data-dv-resizing] .preview-native-frame {
+  visibility: visible !important;
+  pointer-events: none !important;
+}
+
+body[data-dv-resizing='1'],
+body[data-dv-resizing='1'] .polypore-dockview,
+body[data-dv-resizing='1'] .resize-handle,
+body[data-dv-resizing='x'],
+body[data-dv-resizing='x'] .polypore-dockview,
+body[data-dv-resizing='x'] .resize-handle {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body[data-dv-resizing='y'],
+body[data-dv-resizing='y'] .polypore-dockview,
+body[data-dv-resizing='y'] .resize-handle {
+  cursor: row-resize;
+  user-select: none;
+}
+
+/* Prevent text selection during sash drag, tab drag, and tab-rail scrub.
+   !important overrides Monaco/xterm's explicit user-select:text on their
+   inner content elements — without it those still highlight during a drag. */
+body[data-dv-resizing] *,
+body[data-dv-dragging],
+body[data-dv-dragging] *,
+body:has(.is-scrubbing-tabs) * {
+  user-select: none !important;
+}
+
+/* respect prefers-reduced-motion globally — kills the orb keyframes,
+   the cursor-smooth-caret animation in monaco, the chat-pulse spinner,
+   etc. */
+@media (prefers-reduced-motion: reduce) {
+  .app-shell::before,
+  .app-shell::after,
+  .chat-thinking span,
+  .polypore-loading__dots span {
+    animation: none !important;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* when the tab/window is not visible, freeze every animation. saves real
+   battery on backgrounded laptops. (this class is set by App.tsx via the
+   page-visibility listener.) */
+body[data-app-hidden] *,
+body[data-app-hidden] *::before,
+body[data-app-hidden] *::after {
+  animation-play-state: paused !important;
+}
+
+/* fatter sash hit-area so the splitter is easier to grab without
+   pixel-perfect aim. */
+.polypore-dockview .dv-sash {
+  background: transparent;
+  touch-action: none;
+}
+.polypore-dockview .dv-sash::before {
+  content: '';
+  position: absolute;
+  inset: -3px 0;
+  background: transparent;
+}
+.polypore-dockview .dv-sash.dv-active,
+.polypore-dockview .dv-sash:hover { background: var(--accent-18); }
+
+/* Keep the main split panes cheap in steady state. The panel headers and
+   overlays still carry the frosted-glass look; removing per-pane backdrop
+   blurs and huge exterior shadows avoids repainting large blurred
+   rectangles on every sash pointer move. */
+.polypore-dockview .dv-groupview,
+.polypore-dockview .dv-tabs-and-actions-container,
+.active-surface {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.polypore-dockview .dv-groupview {
+  /* quiet neutral edge by default so adjacent panels don't stack into a
+     bright doubled seam. the accent edge + glow is reserved for the active
+     panel (rule below). this is the effective override — App.css sets the
+     same intent but glass.css wins the cascade. */
+  border-color: var(--line-quiet) !important;
+  background:
+    radial-gradient(circle at 50% -10%, var(--accent-10), transparent 60%),
+    radial-gradient(circle at 85% 115%, var(--accent-deep-16), transparent 62%),
+    rgba(var(--c-surface-2-rgb), 0.88) !important;
+  /* fixed keeps the gradient in viewport space. during sash drag the element
+     resizes but the viewport-fixed texture doesn't repaint per frame — only
+     the clip changes. looks identical to element-relative for a full-screen
+     app. the background shorthand sets attachment:scroll so we override it
+     explicitly after with !important. */
+  background-attachment: fixed !important;
+  box-shadow: 0 18px 60px var(--shadow-32);
+}
+
+.polypore-dockview .dv-groupview.dv-active-group {
+  border-color: var(--line) !important;
+  box-shadow: 0 18px 60px var(--shadow-32), 0 0 0 1px var(--accent-18);
+}
+
+body[data-dv-resizing] .polypore-dockview .dv-groupview {
+  /* background-attachment:fixed is set permanently on the base rule so the
+     gradient baking is always active — no switch needed here. border-radius:0
+     drops the stencil buffer cost when content overflows mid-drag. */
+  border-radius: 0 !important;
+}
+
+body[data-dv-resizing] .polypore-dockview .dv-groupview,
+body[data-dv-resizing] .panel-header {
+  box-shadow: none !important;
+}
+
+/* WebKitGTK (Tauri) intermittently drops chrome that uses backdrop-filter
+   while sampling animated layers behind it. Keep the persistent app chrome
+   on a normal painted background so the topbar/bottombar never depend on
+   backdrop recompositing to stay visible. */
+.topbar,
+.bottombar {
+  background: rgba(var(--c-surface-1-rgb), 0.9);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+
+/* ===== 3. dockview chrome / tabs ===================================== */
+
+.polypore-dockview .dv-tabs-and-actions-container {
+  /* trim the row so it doesn't dominate vertically */
+  min-height: 30px;
+}
+
+
+/* ===== 4. unified panel-header ======================================= */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--polypore-panel-header-height, 30px);
+  padding: var(--polypore-panel-header-padding, 4px 6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: rgba(var(--c-surface-1-rgb), 0.52);
+  color: var(--muted);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.panel-header__content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  color: var(--muted);
+}
+.panel-header__content > * { display: inline-flex; align-items: center; }
+.panel-header__agent-pill { color: var(--accent); }
+.panel-header__title { color: var(--ink); font-weight: 600; letter-spacing: 0; }
+.panel-header__meta { font-size: 11px; color: var(--muted); }
+.panel-header__sep { width: 1px; height: 14px; background: var(--accent-22); opacity: 1; }
+.panel-header__controls { display: flex; gap: 4px; }
+.panel-header__controls button {
+  height: var(--polypore-panel-control-height, 22px);
+  padding: var(--polypore-panel-control-padding, 0 6px);
+  color: var(--muted);
+  font-size: 11px;
+}
+.panel-header .file-bar__name,
+.panel-header .file-bar__name--button {
+  height: 22px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+
+/* ===== 5. file tree ================================================== */
+
+/* fixed-width document slot so TS, CSS, HTM, JSON, IMG all line up. the
+   extension text stays as the file-type signal while the silhouette matches
+   the memory document mark. */
+.file-tree__icon--file {
+  color: var(--ink-26);
+  font-size: 0;
+  line-height: 0;
+  position: relative;
+  width: 25px;
+  min-width: 25px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+}
+.file-tree__icon--file::before {
+  content: 'FL';
+  position: static;
+  clip-path: none;
+  display: inline-grid;
+  place-items: center;
+  width: 21px;
+  height: 13px;
+  border: 1px solid var(--ink-26);
+  border-radius: 4px;
+  color: var(--hg-accent-pale);
+  font-size: 8px;
+  font-weight: 700;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  letter-spacing: 0;
+  line-height: 1;
+  background: var(--accent-06);
+}
+.file-tree__icon--file::after {
+  content: none;
+}
+.file-tree__row[data-ftype='ts']   .file-tree__icon--file::before,
+.file-tree__row[data-ftype='tsx']  .file-tree__icon--file::before { content: 'TS';  color: #6cb8ff; border-color: rgba(108,184,255,0.34); background: rgba(108,184,255,0.08); }
+.file-tree__row[data-ftype='js']   .file-tree__icon--file::before,
+.file-tree__row[data-ftype='jsx']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='mjs']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='cjs']  .file-tree__icon--file::before { content: 'JS';  color: #f5d471; border-color: rgba(var(--c-accent-pale-rgb),0.36); background: rgba(var(--c-accent-pale-rgb),0.08); }
+.file-tree__row[data-ftype='css']  .file-tree__icon--file::before { content: 'CSS'; color: #c084ff; border-color: rgba(192,132,255,0.34); background: rgba(192,132,255,0.08); font-size: 7px; }
+.file-tree__row[data-ftype='scss'] .file-tree__icon--file::before { content: 'SCS'; color: #ff8db5; border-color: rgba(255,141,181,0.34); background: rgba(255,141,181,0.08); font-size: 7px; }
+.file-tree__row[data-ftype='html'] .file-tree__icon--file::before { content: 'HTM'; color: #ff9070; border-color: rgba(255,144,112,0.32); background: rgba(255,144,112,0.08); font-size: 7px; }
+.file-tree__row[data-ftype='json'] .file-tree__icon--file::before { content: '{}';  color: #8be996; border-color: rgba(139,233,150,0.32); background: rgba(139,233,150,0.08); }
+.file-tree__row[data-ftype='md']   .file-tree__icon--file::before,
+.file-tree__row[data-ftype='mdx']  .file-tree__icon--file::before { content: 'MD';  color: #d8d3ca; border-color: rgba(var(--c-accent-pale-rgb),0.32); background: rgba(var(--c-accent-pale-rgb),0.06); }
+.file-tree__row[data-ftype='rs']   .file-tree__icon--file::before { content: 'RS';  color: var(--accent); border-color: rgba(var(--c-accent-pale-rgb),0.42); background: rgba(var(--c-accent-pale-rgb),0.1); }
+.file-tree__row[data-ftype='py']   .file-tree__icon--file::before { content: 'PY';  color: #94c5ff; border-color: rgba(148,197,255,0.32); background: rgba(148,197,255,0.08); }
+.file-tree__row[data-ftype='go']   .file-tree__icon--file::before { content: 'GO';  color: #6cd0e0; border-color: rgba(108,208,224,0.34); background: rgba(108,208,224,0.08); }
+.file-tree__row[data-ftype='sh']   .file-tree__icon--file::before { content: 'SH';  color: #b8d77e; border-color: rgba(184,215,126,0.32); background: rgba(184,215,126,0.08); }
+.file-tree__row[data-ftype='toml'] .file-tree__icon--file::before,
+.file-tree__row[data-ftype='yaml'] .file-tree__icon--file::before,
+.file-tree__row[data-ftype='yml']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='cfg']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='ini']  .file-tree__icon--file::before { content: 'CFG'; color: #b8b0a0; border-color: rgba(var(--c-accent-pale-rgb),0.32); background: rgba(var(--c-accent-pale-rgb),0.06); font-size: 7px; }
+.file-tree__row[data-ftype='png']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='jpg']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='jpeg'] .file-tree__icon--file::before,
+.file-tree__row[data-ftype='gif']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='svg']  .file-tree__icon--file::before,
+.file-tree__row[data-ftype='webp'] .file-tree__icon--file::before { content: 'IMG'; color: #f0a8d0; border-color: rgba(240,168,208,0.32); background: rgba(240,168,208,0.08); font-size: 7px; }
+.file-tree__row[data-ftype='lock'] .file-tree__icon--file::before { content: 'LK';  color: #888;     border-color: rgba(136,136,136,0.32); background: rgba(136,136,136,0.06); }
+.file-tree__row[data-ftype='env']  .file-tree__icon--file::before { content: 'ENV'; color: #ec665e; border-color: rgba(236,102,94,0.34); background: rgba(236,102,94,0.08); font-size: 7px; }
+
+/* full-path tail: reveal only on hover/active so the tree reads as a
+   list of filenames not a CSV dump. */
+.file-tree__row--file .file-tree__path {
+  opacity: 0;
+  transition: opacity 120ms var(--hg-ease);
+}
+.file-tree__row--file:hover .file-tree__path,
+.file-tree__row--file.file-tree__row--active .file-tree__path { opacity: 1; }
+
+
+/* ===== 6. preview (panel-filling setup screen) ======================
+   the setup screen takes the whole panel. wide panels: two columns —
+   scripts list on the left (scrollable), command + run on the right.
+   narrow panels: stack vertically. the visible white-space is meaningful
+   negative space, not dead pixels from a centered card. */
+
+.preview-surface {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 8px;
+  padding: 8px;
+}
+.preview-setup {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  overflow: hidden;
+}
+.preview-setup__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+}
+.preview-setup__title strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0;
+}
+.preview-setup__title small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.preview-setup__source {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-pill);
+  background: var(--accent-06);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+/* two-column body. minmax(260px, 1fr) on the scripts column means it
+   never goes below 260px; the form column always gets at least 320px.
+   below the combined threshold the columns wrap. container queries
+   would be cleaner but grid auto-fit with minmax does it in one rule. */
+.preview-setup__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  min-height: 0;
+  height: 100%;
+}
+
+.preview-setup__body--resizable {
+  grid-template-columns: minmax(170px, var(--preview-scripts-width, 28%)) 8px minmax(0, 1fr);
+  gap: 0;
+}
+
+@container (max-width: 620px) {
+  .preview-setup__body { grid-template-columns: 1fr; }
+  .preview-setup__body > .resize-handle { display: none; }
+  .preview-form {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  }
+  .preview-cta,
+  .preview-form__hint,
+  .preview-input {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+/* fallback for browsers without container queries — drop to single
+   column when the dockview cell is narrow. dockview already gives every
+   panel its own block, so a panel-scoped media query won't work; we use
+   the parent dockview group's data attributes. */
+.dv-groupview[style*="width: 1"][style*="px"] .preview-setup__body,
+.dv-groupview[style*="width: 2"][style*="px"] .preview-setup__body,
+.dv-groupview[style*="width: 3"][style*="px"] .preview-setup__body,
+.dv-groupview[style*="width: 4"][style*="px"] .preview-setup__body,
+.dv-groupview[style*="width: 5"][style*="px"] .preview-setup__body {
+  grid-template-columns: 1fr;
+}
+
+.dv-groupview[style*="width: 1"][style*="px"] .preview-setup__body > .resize-handle,
+.dv-groupview[style*="width: 2"][style*="px"] .preview-setup__body > .resize-handle,
+.dv-groupview[style*="width: 3"][style*="px"] .preview-setup__body > .resize-handle,
+.dv-groupview[style*="width: 4"][style*="px"] .preview-setup__body > .resize-handle,
+.dv-groupview[style*="width: 5"][style*="px"] .preview-setup__body > .resize-handle {
+  display: none;
+}
+
+.preview-scripts {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-self: stretch;
+  gap: 6px;
+  min-height: 0;
+  height: 100%;
+  padding: 9px;
+  border: 1px solid var(--accent-14);
+  border-radius: var(--r-control);
+  background: var(--shadow-16);
+}
+.preview-scripts__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+.preview-scripts__head strong {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--hg-accent-pale);
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+}
+.preview-scripts__head small { color: var(--muted); font-size: 10px; }
+.preview-runtime-list {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--hg-glass-edge);
+}
+.preview-runtime {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+.preview-runtime:hover {
+  border-color: var(--hg-glass-edge);
+  background: var(--accent-06);
+}
+.preview-runtime--active {
+  border-color: var(--hg-accent);
+  background: var(--accent-12);
+}
+.preview-runtime span {
+  font-size: 11px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-runtime small {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+.preview-scripts__list {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.preview-script {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  align-items: baseline;
+  align-self: start;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease);
+}
+.preview-script:hover {
+  border-color: var(--hg-glass-edge);
+  background: var(--accent-06);
+}
+.preview-script--active {
+  border-color: var(--hg-accent);
+  background: var(--accent-12);
+}
+.preview-script__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.preview-script__cmd {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-script--active .preview-script__cmd { color: var(--hg-accent-pale); }
+
+.preview-form {
+  display: grid;
+  grid-column: auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-self: stretch;
+  align-content: stretch;
+  gap: 10px;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--accent-18);
+  border-radius: var(--r-card);
+  background:
+    linear-gradient(180deg, rgba(var(--c-ink-rgb), 0.035), rgba(var(--c-surface-1-rgb), 0.42)),
+    var(--surface-section);
+  box-shadow:
+    0 1px 0 rgba(var(--c-ink-rgb), 0.05) inset,
+    0 16px 36px var(--shadow-18);
+}
+.preview-form__hint {
+  grid-column: 1 / -1;
+  grid-row: 4;
+  align-self: end;
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted-74);
+  line-height: 1.5;
+  max-width: 58ch;
+}
+
+.preview-input {
+  grid-column: 1;
+  display: grid;
+  grid-template-rows: auto auto;
+  gap: 7px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-12);
+  border-radius: var(--r-control);
+  background: var(--shadow-20);
+}
+
+.preview-input:nth-of-type(1) {
+  grid-row: 1;
+}
+
+.preview-input:nth-of-type(2) {
+  grid-row: 2;
+}
+.preview-input span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(var(--c-ink-rgb), 0.82);
+  letter-spacing: 0.07em;
+  text-transform: lowercase;
+}
+.preview-input span em {
+  font-style: normal;
+  font-size: 9px;
+  color: rgba(var(--c-ink-rgb), 0.42);
+  letter-spacing: 0;
+  text-transform: lowercase;
+}
+.preview-input input {
+  height: 28px;
+  align-self: start;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  transition: border-color 120ms var(--hg-ease), box-shadow 120ms var(--hg-ease);
+}
+.preview-input input:focus {
+  outline: 0;
+}
+.preview-input:focus-within {
+  border-color: var(--accent-48);
+  background: var(--shadow-26);
+  box-shadow: 0 0 0 3px var(--accent-12);
+}
+
+.preview-cta {
+  grid-column: 1;
+  grid-row: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  justify-items: center;
+  margin-top: 0;
+  min-height: 0;
+  padding: 14px;
+  border: 1px solid var(--accent-10);
+  border-radius: var(--r-control);
+  background:
+    radial-gradient(circle at 50% 0%, var(--accent-08), transparent 16rem),
+    rgba(0, 0, 0, 0.14);
+}
+.preview-cta__primary {
+  grid-row: 2;
+  width: min(340px, 100%);
+  min-width: 0;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--accent-22);
+  border-radius: var(--r-control);
+  background: var(--shadow-22);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  transition: border-color 120ms var(--hg-ease), background 120ms var(--hg-ease);
+}
+.preview-cta__primary:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-12);
+}
+.preview-cta__primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.preview-cta__glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1;
+}
+.preview-cta__secondary {
+  grid-row: 3;
+  width: min(340px, 100%);
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--accent-16);
+  border-radius: var(--r-control);
+  background: var(--shadow-16);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  transition: border-color 120ms var(--hg-ease), background 120ms var(--hg-ease), color 120ms var(--hg-ease);
+}
+.preview-cta__secondary:hover:not(:disabled) {
+  border-color: var(--accent-34);
+  background: var(--accent-08);
+  color: var(--ink);
+}
+.preview-cta__secondary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* native-only variant: command can't be embedded (tauri/electron/etc),
+   so there's no "run in window" path. "open externally" takes the
+   primary slot — same row position as the embed CTA, no secondary row. */
+.preview-cta--external-only {
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.preview-cta--external-only .preview-cta__primary {
+  grid-row: 2;
+}
+.preview-cta__primary--external .preview-cta__glyph {
+  font-size: 13px;
+}
+
+
+/* ===== 7. terminal =================================================== */
+
+.terminal {
+  /* Keep this section as a layout slot only so it does not draw a
+     second inset box around the visible terminal surface below the
+     command chips. */
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.terminal__surface {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 20px 18px 14px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--hg-radius);
+  background: var(--surface-section);
+  box-shadow: var(--hg-shadow);
+  overflow: hidden;
+}
+.terminal__prompt {
+  border-top: 1px solid var(--hg-glass-edge);
+  background: var(--shadow-22);
+}
+.terminal__prompt span { color: var(--hg-accent-pale); }
+.terminal__prompt input { color: var(--ink); font-family: var(--mono); }
+.terminal__buffer {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px 10px 4px;
+}
+/* quick-launch chips — match the preview chip shape so the visual
+   vocabulary stays consistent across panels. */
+.terminal-quicklaunch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 0;
+}
+.terminal-quicklaunch__chip {
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-pill);
+  background: var(--accent-04);
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-quicklaunch__chip:hover {
+  border-color: var(--hg-accent);
+  background: var(--accent-12);
+  color: var(--ink);
+}
+
+
+/* ===== 8. chat slash popover ========================================= */
+
+.chat-slash {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 44px;
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--hg-glass-edge-strong);
+  border-radius: var(--hg-radius);
+  background: rgba(var(--c-surface-3-rgb), 0.96);
+  box-shadow: var(--hg-shadow);
+  backdrop-filter: var(--hg-blur);
+  -webkit-backdrop-filter: var(--hg-blur);
+}
+.chat-slash button {
+  display: grid;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--muted);
+  border-radius: var(--r-control);
+}
+.chat-slash button strong { color: var(--ink); font-size: 12px; }
+.chat-slash button small { color: var(--hg-accent); font-size: 10px; font-family: var(--mono); }
+.chat-slash button[aria-selected='true'],
+.chat-slash button:hover { background: var(--accent-14); }
+
+
+/* ===== 9. memory ===================================================== */
+
+.memory-document__editor { font-family: var(--mono); line-height: 1.55; }
+.memory-wikilinks button {
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--accent-06);
+  color: var(--hg-accent-pale);
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.memory-wikilinks button:hover { background: var(--accent-14); }
+
+.memory-backlinks {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--accent-04);
+}
+.memory-backlinks strong { color: var(--hg-accent-pale); font-size: 11px; font-weight: 600; }
+.memory-backlinks button {
+  text-align: left;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  border-radius: var(--r-inset);
+}
+.memory-backlinks button:hover { color: var(--ink); background: var(--accent-10); }
+
+
+/* ===== 10. agent canvas + formation node ============================= */
+
+.formation-canvas { position: relative; overflow: hidden; }
+.formation-canvas__viewport { position: absolute; inset: 0; cursor: grab; }
+.formation-canvas__viewport:active { cursor: grabbing; }
+.formation-canvas__world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.formation-canvas__hint {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+
+.formation-toolbar { display: inline-flex; gap: 6px; align-items: center; }
+.formation-toolbar select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--shadow-32);
+  color: var(--ink);
+  font-size: 11px;
+}
+.formation-toolbar button { height: 24px; padding: 0 10px; font-size: 11px; }
+
+.formation-node {
+  position: absolute;
+  display: grid !important;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid var(--accent-24);
+  border-radius: var(--r-control);
+  background:
+    linear-gradient(180deg, rgba(var(--c-ink-rgb), 0.055), rgba(var(--c-ink-rgb), 0) 100%),
+    rgba(var(--c-surface-2-rgb), 0.92);
+  color: var(--ink);
+  box-shadow:
+    inset 0 1px 0 var(--ink-045),
+    0 8px 18px var(--shadow-34);
+  cursor: grab;
+  user-select: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition:
+    border-color 120ms var(--hg-ease),
+    box-shadow 140ms var(--hg-ease),
+    background 140ms var(--hg-ease);
+}
+.formation-node:active { cursor: grabbing; }
+.formation-node:hover {
+  border-color: var(--accent-42);
+  background:
+    linear-gradient(180deg, rgba(var(--c-ink-rgb), 0.075), rgba(var(--c-ink-rgb), 0) 100%),
+    rgba(var(--c-surface-3-rgb), 0.94);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--c-ink-rgb), 0.08),
+    0 0 0 1px var(--accent-12),
+    0 10px 22px var(--shadow-42);
+}
+.formation-node--running {
+  border-color: rgba(var(--c-ok-rgb), 0.34);
+  background:
+    linear-gradient(180deg, rgba(var(--c-ok-rgb), 0.065), rgba(var(--c-ok-rgb), 0) 100%),
+    rgba(var(--c-surface-2-rgb), 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--c-ink-rgb), 0.07),
+    0 8px 18px var(--shadow-34);
+}
+.formation-node--waiting {
+  border-color: var(--accent-32);
+}
+.formation-node--missing {
+  border-color: rgba(var(--c-danger-rgb), 0.38);
+  background:
+    linear-gradient(180deg, rgba(var(--c-danger-rgb), 0.08), rgba(var(--c-danger-rgb), 0) 100%),
+    rgba(20, 9, 8, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(var(--c-ink-rgb), 0.06),
+    0 8px 18px var(--shadow-34);
+}
+.formation-node--selected,
+.formation-node--linking {
+  border-color: var(--accent-70);
+  box-shadow:
+    0 0 0 1px var(--accent-28),
+    0 0 22px var(--accent-14),
+    0 14px 34px rgba(0, 0, 0, 0.44);
+}
+.formation-node__body {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-width: 0;
+}
+.formation-node__identity {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  min-width: 0;
+  max-width: calc(100% - 52px);
+  transform: translate(-50%, -50%);
+}
+.formation-node__name {
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  overflow: visible;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+.formation-node__status {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 4px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: rgba(var(--c-accent-rgb), 0.76);
+  box-shadow: 0 0 0 1px rgba(var(--c-accent-rgb), 0.1);
+  transform: translateY(-50%);
+}
+.formation-node__status--running {
+  background: var(--ok);
+  box-shadow: 0 0 0 1px rgba(var(--c-ok-rgb), 0.18), 0 0 14px rgba(var(--c-ok-rgb), 0.34);
+  animation: none;
+}
+.formation-node__status--waiting {
+  background: var(--hg-accent);
+  box-shadow: 0 0 0 1px var(--accent-14);
+}
+.formation-node__status--idle { background: rgba(var(--c-accent-rgb), 0.76); }
+.formation-node__status--missing {
+  background: var(--danger);
+  box-shadow: 0 0 0 1px rgba(var(--c-danger-rgb), 0.16), 0 0 10px rgba(var(--c-danger-rgb), 0.2);
+}
+.formation-node__badge {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  z-index: 4;
+  max-width: 54px;
+  overflow: hidden;
+  padding: 1px 5px 2px;
+  border: 1px solid var(--accent-22);
+  border-radius: var(--r-inset);
+  background: rgba(var(--c-surface-2-rgb), 0.96);
+  color: var(--hg-accent-pale);
+  font-size: 7px;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  text-transform: lowercase;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px rgba(var(--c-surface-2-rgb), 0.88);
+  transform: translateX(-50%);
+}
+.formation-node:hover .formation-port,
+.formation-node--selected .formation-port,
+.formation-node--linking .formation-port {
+  opacity: 1;
+}
+.formation-port {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--accent-32);
+  border-radius: var(--r-pill);
+  background: rgba(var(--c-surface-2-rgb), 0.94);
+  box-shadow: 0 0 0 2px rgba(var(--c-surface-2-rgb), 0.92);
+  opacity: 0.55;
+  transform: translateX(-50%);
+  transition:
+    opacity 120ms var(--hg-ease),
+    border-color 120ms var(--hg-ease),
+    background 120ms var(--hg-ease),
+    box-shadow 120ms var(--hg-ease),
+    transform 120ms var(--hg-ease);
+}
+.formation-port--in {
+  top: -5px;
+  cursor: crosshair;
+}
+.formation-port--out {
+  bottom: -5px;
+  cursor: crosshair;
+}
+.formation-port--out:hover,
+.formation-port--in.formation-port--target,
+.formation-port--out.formation-port--target {
+  border-color: var(--hg-accent);
+  background: var(--hg-accent);
+  box-shadow: 0 0 0 3px var(--accent-16), 0 0 12px var(--accent-34);
+  opacity: 1;
+  transform: translateX(-50%) scale(1.18);
+}
+.formation-node__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-inset);
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 120ms var(--hg-ease);
+}
+.formation-node:hover .formation-node__remove,
+.formation-node:focus-within .formation-node__remove { opacity: 1; }
+.formation-node__remove:hover {
+  border-color: rgba(var(--c-danger-rgb), 0.4);
+  color: var(--danger);
+  background: rgba(var(--c-danger-rgb), 0.1);
+}
+
+.formation-link-mode {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--hg-accent);
+  border-radius: var(--r-pill);
+  background: var(--accent-16);
+  color: var(--ink);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+
+/* ===== 11. quick-actions ============================================= */
+
+.quick-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 6px;
+  padding: 8px;
+}
+.quick-actions__tile {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--accent-04);
+  color: var(--muted);
+  text-align: left;
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease);
+}
+.quick-actions__tile strong { color: var(--ink); font-size: 12px; font-weight: 600; }
+.quick-actions__tile small { color: var(--muted); font-size: 10px; }
+.quick-actions__tile:hover {
+  border-color: var(--hg-accent);
+  background: var(--accent-10);
+}
+
+
+/* ===== 12. monaco surface ============================================ */
+
+/* monaco's root takes its background from the theme. we've gone
+   transparent so the panel's frosted layer shows through — but the
+   widget chrome (overlay scrollbars, sticky-scroll) still wants a
+   subtle ground so it doesn't look floating. */
+.monaco-host {
+  background: rgba(var(--c-surface-1-rgb), 0.42);
+  border-radius: var(--r-control);
+  overflow: hidden;
+}
+.monaco-host .monaco-editor,
+.monaco-host .monaco-editor .overflow-guard {
+  background: transparent !important;
+}
+.monaco-host .monaco-editor .margin {
+  background: transparent !important;
+}
+
+
+/* ===== cross-panel hover lift ======================================= */
+
+.skill-card,
+.problem-row,
+.check-row,
+.queue-item,
+.diff-files__entry,
+.history-rail__entry {
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease);
+}
+
+
+/* ===== 13. cohesion polish =========================================== */
+
+/* universal focus ring — keyboard users get a visible accent halo on any
+   interactive control. mouse/click users never see it because :focus-visible
+   only matches keyboard focus. */
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible,
+[role='menuitem']:focus-visible,
+[role='menuitemradio']:focus-visible,
+[role='tab']:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--hg-accent);
+  outline-offset: 1px;
+  border-radius: var(--r-control);
+}
+
+/* pressed feedback — every primary CTA dips 1px on active so click feels
+   physical. covers launcher CTAs, preview run buttons, send, save, etc. */
+.launcher__primary:active,
+.formation-toolbar button:active,
+.chat-empty__commands button:active,
+.composer button[data-send]:active,
+button[data-send]:active,
+.diff-pane-region__actions button:active,
+.git-menu__actions button:active,
+.workspace-preset-menu__section button:active {
+  transform: translateY(1px);
+}
+
+/* Keep the sash cheap: it moves through the hottest resize path, so avoid
+   animated shadows/filters here. */
+.polypore-dockview .dv-sash {
+  transition: none;
+}
+.polypore-dockview .dv-sash:hover {
+  background: var(--accent-28);
+}
+
+/* during a sash drag we kill backdrop-filter on the chrome (perf), then
+   fade it back in when the user releases. the transition lives on the
+   target rules; we only need to make sure it's defined. */
+.panel-header,
+.chat-box,
+.preview-card,
+.terminal,
+.topbar,
+.bottombar,
+.polypore-dockview .dv-tabs-and-actions-container {
+  transition: backdrop-filter 180ms var(--hg-ease);
+}
+
+/* diff side-by-side: an alignment row that visually pads the column when
+   the other side has a longer hunk. zero-height would collapse and
+   misalign; subtle stripe instead. */
+.diff-line--empty {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--accent-02),
+      var(--accent-02) 4px,
+      transparent 4px,
+      transparent 8px
+    );
+  min-height: 18px;
+}
+
+/* tab close button cross-fade (was instant 0.6 → 1 swap). */
+.polypore-dockview .dv-default-tab-action,
+.editor-tab__close,
+.polypore-tab__close,
+.launcher__recent-forget {
+  transition: opacity 120ms var(--hg-ease), background 120ms var(--hg-ease), color 120ms var(--hg-ease);
+}
+
+/* disabled buttons read as truly disabled, not just dim. */
+button:disabled,
+[role='menuitem']:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+  filter: saturate(0.7);
+}
+button:disabled:hover {
+  background: rgba(var(--c-ink-rgb), 0.025);
+  border-color: var(--accent-18);
+}
+
+/* tone the workspace ambient orbs — they were so saturated they competed
+   with content. reducing opacity caps them at a quieter ambient glow. the
+   keyframes still animate but the result reads as accent haze, not a
+   light show. */
+.app-shell::before { opacity: 0.42; }
+.app-shell::after  { opacity: 0.36; }
+@keyframes ambient-orbs-a {
+  from { opacity: 0.30; transform: translate3d(-7%, -5%, 0) rotate(-5deg) scale(1); }
+  to   { opacity: 0.50; transform: translate3d(8%, 6%, 0) rotate(8deg) scale(1.10); }
+}
+@keyframes ambient-orbs-b {
+  from { opacity: 0.24; transform: translate3d(8%, 6%, 0) rotate(7deg) scale(1.06); }
+  to   { opacity: 0.46; transform: translate3d(-8%, -7%, 0) rotate(-9deg) scale(1); }
+}
+
+/* riced launcher background: the fungus photo was competing with the
+   centered card. a soft vignette quiets the edges so the eye lands on
+   the panel without erasing the brand image. */
+.launcher::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 42%, rgba(var(--c-surface-1-rgb), 0.42) 96%),
+    linear-gradient(180deg, rgba(var(--c-surface-1-rgb), 0.06), rgba(var(--c-surface-1-rgb), 0.18));
+  pointer-events: none;
+  z-index: 0;
+}
+.launcher__panel { position: relative; z-index: 1; }
+
+/* empty state polish — quiet, centered, no apologetic boxiness. */
+.verify-empty,
+.formation-empty,
+.editor-tab--empty {
+  display: inline-block;
+  padding: 6px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+
+/* chat empty state: tighten typography + a clean grid of suggestions. */
+.chat-empty {
+  padding: clamp(16px, 6%, 28px) clamp(14px, 6%, 26px);
+  display: grid;
+  gap: 12px;
+  color: var(--ink);
+}
+.chat-empty h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.chat-empty p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 46ch;
+}
+.chat-empty__eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: lowercase;
+  color: var(--hg-accent);
+  opacity: 0.78;
+}
+.chat-empty__commands {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 6px;
+  margin-top: 4px;
+}
+.chat-empty__commands button {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: rgba(var(--c-surface-3-rgb), 0.45);
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease), transform 120ms var(--hg-ease);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chat-empty__commands button:hover {
+  background: var(--accent-08);
+  border-color: var(--hg-glass-edge-strong);
+  transform: translateY(-1px);
+}
+.chat-empty__commands button strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--hg-accent);
+  letter-spacing: 0;
+}
+.chat-empty__commands button small {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

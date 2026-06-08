@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "polypore.agent",
+  "title": "agent",
+  "icon": "ai",
+  "version": "0.1.0",
+  "entry": "index.html",
+  "permissions": ["state.read", "tasks.read", "tasks.write", "chat.read", "chat.send", "workspace.write", "secrets.list", "mcp.invoke", "skills.read", "skills.write"],
+  "capabilities": ["tool-use"],
+  "category": "agent",
+  "defaultArea": "center"
+}

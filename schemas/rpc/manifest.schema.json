@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/rpc/manifest.schema.json",
+  "title": "ManifestRpcSchemas",
+  "definitions": {
+    "manifest.register.params": { "type": "object", "additionalProperties": false, "required": ["manifest"], "properties": { "manifest": { "$ref": "../manifest.schema.json" } } },
+    "manifest.register.result": { "type": "object", "additionalProperties": false, "required": ["registered", "panelId"], "properties": { "registered": { "type": "boolean" }, "panelId": { "type": "string" } } }
+  },
+  "type": "object",
+  "additionalProperties": true
+}

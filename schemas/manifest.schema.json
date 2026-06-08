@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/manifest.schema.json",
+  "title": "PanelManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "title", "icon", "version", "entry", "permissions", "capabilities", "category"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "icon": { "type": "string", "minLength": 1, "maxLength": 4 },
+    "version": { "type": "string", "minLength": 1 },
+    "author": { "type": "object", "additionalProperties": false, "required": ["name"], "properties": { "name": { "type": "string" }, "url": { "type": "string" } } },
+    "description": { "type": "string" },
+    "entry": { "type": "string", "minLength": 1 },
+    "permissions": { "type": "array", "items": { "$ref": "types.schema.json#/definitions/HostPermission" } },
+    "capabilities": { "type": "array", "items": { "$ref": "types.schema.json#/definitions/Capability" } },
+    "category": { "$ref": "types.schema.json#/definitions/PanelCategory" },
+    "defaultArea": { "type": "string", "enum": ["center", "left", "right", "bottom"] },
+    "settings": { "$ref": "types.schema.json#/definitions/PanelSettingSchema" },
+    "manual": { "$ref": "types.schema.json#/definitions/PanelManualContent" }
+  }
+}

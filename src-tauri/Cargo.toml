@@ -1,0 +1,33 @@
+[package]
+name = "polypore-shell"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+getrandom = "0.2"
+keyring = { version = "3", features = ["linux-native"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+portable-pty = "0.8"
+notify = "6"
+tauri-plugin-updater = "2"
+rfd = { version = "0.14", default-features = false, features = ["xdg-portal", "tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "io-util", "time"] }
+which = "6"
+ignore = "0.4"
+toml = "0.8"
+dirs = "6"
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

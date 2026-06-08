@@ -1,0 +1,25 @@
+{
+  "id": "polyflow",
+  "title": "polyflow",
+  "version": "0.1.0",
+  "builtin": true,
+  "source": "bundled",
+  "summary": "polypore-native iterative TDD loop. derived from evanflow with brainstorming, planning, vertical-slice TDD, review, QA, and context compaction.",
+  "skills": [
+    "polyflow",
+    "polyflow-go",
+    "polyflow-brainstorming",
+    "polyflow-writing-plans",
+    "polyflow-executing-plans",
+    "polyflow-tdd",
+    "polyflow-iterate",
+    "polyflow-debug",
+    "polyflow-review",
+    "polyflow-design-interface",
+    "polyflow-prd",
+    "polyflow-improve-architecture",
+    "polyflow-glossary",
+    "polyflow-qa",
+    "polyflow-compact"
+  ]
+}

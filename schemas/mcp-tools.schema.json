@@ -1,0 +1,1492 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypore.dev/schemas/mcp-tools.schema.json",
+  "title": "McpToolSchemas",
+  "definitions": {
+    "empty.input": {
+      "type": "object",
+      "additionalProperties": false
+    },
+    "loose.object": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "string.id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "skill.id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "string.array": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "polypore.manual.input": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.state.get.input": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.editor.open.input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.editor.read.input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.editor.search.input": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "regex": {
+          "type": "boolean"
+        },
+        "glob": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.workspace.describe.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.memory.list.input": {
+      "type": "object",
+      "properties": {
+        "baseId": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.tasks.update.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "done": {
+          "type": "boolean"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "panelHint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.tasks.add.input": {
+      "type": "object",
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "panelHint": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.tasks.list.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.diagnostics.list.input": {
+      "type": "object",
+      "properties": {
+        "severity": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.verify.run.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.verify.results.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.verify.declare.input": {
+      "type": "object",
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "command"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "commands"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.format.run.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.memory.read.input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.memory.write.input": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.memory.link.input": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayText": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.memory.handoff.input": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nextSteps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.phase.report.input": {
+      "type": "object",
+      "properties": {
+        "phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "active",
+            "blocked",
+            "done"
+          ]
+        }
+      },
+      "required": [
+        "phase",
+        "status"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.workflow.update.input": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.panel.open.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "area": {
+          "type": "string",
+          "enum": [
+            "center",
+            "left",
+            "right",
+            "bottom"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.panel.close.input": {
+      "type": "object",
+      "properties": {
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "instanceId"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.ui.notify.input": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ]
+        },
+        "msg": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "level",
+        "msg"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.preview.register.input": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "site",
+            "desktop",
+            "mobile",
+            "cli",
+            "game",
+            "test"
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "command",
+        "target"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.preview.refresh.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.history.events.input": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.history.fork.input": {
+      "type": "object",
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "eventId"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.adr.record.input": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.mcp.invoke.input": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "authRef": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server",
+        "method"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.fetch.input": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ref": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.scan.input": {
+      "type": "object",
+      "properties": {
+        "stagingPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "stagingPath"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.inspect.input": {
+      "type": "object",
+      "properties": {
+        "stagingPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "stagingPath",
+        "manifestPath"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.install.input": {
+      "type": "object",
+      "properties": {
+        "stagingPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifestPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        }
+      },
+      "required": [
+        "stagingPath",
+        "manifestPath"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.list.input": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user",
+            "builtin"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.plugins.enable.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.disable.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.plugins.uninstall.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.secrets.list.input": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.secrets.has.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.secrets.use.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        },
+        "request": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "minLength": 1
+            },
+            "method": {
+              "type": "string"
+            },
+            "headers": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "body": {},
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 120000
+            },
+            "allowInsecure": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "request"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skills.list.input": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.skills.read.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skills.invoke.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skills.create.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "body"
+      ],
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ]
+    },
+    "polypore.skills.update.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "body": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "body"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skills.delete.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skillsets.list.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.skillsets.read.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skillsets.upsert.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skillsets.delete.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.skills.publish.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "agents"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.mcp.servers.list.input": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user",
+            "polypore"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.mcp.servers.upsert.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user",
+            "polypore"
+          ]
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "authRef": {
+          "type": "string"
+        },
+        "allowInsecure": {
+          "type": "boolean"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120000
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.mcp.servers.delete.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.mcp.servers.test.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.formation.upsert.input": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.probe.input": {
+      "type": "object",
+      "properties": {
+        "adapter": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.start.input": {
+      "type": "object",
+      "properties": {
+        "scenario": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "whatsWrong": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ],
+          "additionalProperties": false
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "trust": {
+          "type": "string",
+          "enum": [
+            "observe",
+            "evaluate",
+            "off"
+          ]
+        }
+      },
+      "required": [
+        "scenario"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.setBreakpoints.input": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "breakpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "condition": {
+                "type": "string"
+              },
+              "hitCondition": {
+                "type": "string"
+              },
+              "logMessage": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "line"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "setBy": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "human"
+          ]
+        }
+      },
+      "required": [
+        "file",
+        "breakpoints"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.addBreakpoint.input": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "condition": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "line"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.removeBreakpoint.input": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "file",
+        "line"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.continue.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.stepOver.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.stepIn.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.stepOut.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.pause.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.stackTrace.input": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.scopes.input": {
+      "type": "object",
+      "properties": {
+        "frameId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "frameId"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.variables.input": {
+      "type": "object",
+      "properties": {
+        "variablesReference": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "variablesReference"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.evaluate.input": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1
+        },
+        "frameId": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expression"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.capture.screenshot.input": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.capture.console.input": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.capture.dom.input": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.capture.network.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.roadblock.input": {
+      "type": "object",
+      "properties": {
+        "ask": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ask"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.roadblock.resolve.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.rootCause.input": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.sessions.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.select.input": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.state.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.stop.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.capabilities.input": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "polypore.debug.navigate.input": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.click.input": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "selector"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.fill.input": {
+      "type": "object",
+      "properties": {
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "selector",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "polypore.debug.login.input": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "usernameSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passwordSelector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "usernameSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passwordSecret": {
+          "type": "string",
+          "minLength": 1
+        },
+        "submitSelector": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "user"
+          ]
+        }
+      },
+      "required": [
+        "usernameSelector",
+        "passwordSelector",
+        "usernameSecret",
+        "passwordSecret"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "additionalProperties": true
+}
