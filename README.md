@@ -1,75 +1,161 @@
 # Polypore
 
-Desktop IDE for driving agentic coding sessions. Tauri 2 shell, Vite + React 18
-renderer, JSON-Schema-driven contracts, and a panel-plugin architecture under
-the `polypore-ide` MCP server.
+Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable panel: split, reorder, close what you don't need. The built-in panels cover most workflows. If they don't, the SDK is there.
+
+> Tauri 2 · React 18 · Dockview · Monaco · MIT · no telemetry
+
+---
+
+## Panels
+
+Eight panels are available from the `+` tab button:
+
+| Panel | What it does |
+|---|---|
+| claude | Claude CLI terminal with slash-command quick-launch |
+| codex | Codex CLI terminal with slash-command quick-launch |
+| preview | Live runtime output: browser, CLI, or any dev server |
+| editor | Monaco editor with per-project diagnostics |
+| diff-stack | Side-by-side diff and scrubbable history feed |
+| terminal | Standalone pty terminal |
+| debug | Verify runs and diagnostics |
+| memory | Project knowledge base with `[[wikilinks]]` and context inventory |
+| agent | Formation canvas, skills, MCP management, and secrets |
+
+---
+
+## SDK and plugins
+
+Third-party panels are sandboxed iframes using the same `HostRpcServer` contract as the built-ins. Write a plugin in any framework, drop it in `.polypore/plugins/<id>/`, and it appears in the panel strip. Agents can drive it through the MCP server the same way they drive built-in panels.
+
+---
+
+## polypore-ide MCP server
+
+A Node MCP sidecar ships with Polypore. Claude Code picks it up from `.mcp.json` automatically. Gives agents direct IDE control through 22+ tools:
+
+| Namespace | What agents can do |
+|---|---|
+| `polypore.debug.*` | Start sessions, set breakpoints, step, capture console/DOM/network |
+| `polypore.memory.*` | Read/write the knowledge base, link entries, write handoff documents |
+| `polypore.verify.*` | Declare and run verification suites |
+| `polypore.tasks.*` | Create and update tasks visible in the IDE in real time |
+| `polypore.phase.*` | Report workflow phase to the live UI |
+| `polypore.secrets.*` | Make mediated HTTP requests without seeing the secret value |
+| `polypore.skills.*` | Read the active skill library |
+| `polypore.format.*` | Trigger formatters in-editor |
+
+---
+
+## Secret broker
+
+Secrets live in the OS keyring. When Polypore spawns an agent it strips every registered secret from the environment and replaces it with a `POLYPORE_SECRET_HANDLE_<KEY>` sentinel. Agents call `polypore.secrets.use` with an HTTP request; Polypore injects the value and masks it on the way back. The model never sees plaintext.
+
+---
+
+## Polyflow skills
+
+15 slash commands in `packages/polyflow/` covering the full development loop:
+
+`/polyflow` `/polyflow-go` `/polyflow-brainstorming` `/polyflow-writing-plans` `/polyflow-executing-plans` `/polyflow-tdd` `/polyflow-iterate` `/polyflow-debug` `/polyflow-review` `/polyflow-design-interface` `/polyflow-prd` `/polyflow-improve-architecture` `/polyflow-qa` `/polyflow-glossary` `/polyflow-compact`
+
+---
+
+## Stack
+
+| | |
+|---|---|
+| Shell | Tauri 2, Rust |
+| Renderer | React 18, Vite, TypeScript |
+| Panels | Dockview |
+| Editor | Monaco |
+| Terminal | xterm.js, portable-pty |
+| MCP sidecar | Node, JSON-RPC |
+| Persistence | SQLite via rusqlite |
+| Secrets | OS keyring via `keyring` crate |
+| File watching | `notify` |
+| Contracts | JSON Schema, codegen'd into `packages/sdk/` |
+
+---
+
+## Getting started
+
+**Prerequisites:** Node 20+, Rust stable ([rustup](https://rustup.rs)). Linux also needs `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`.
+
+```sh
+npm ci
+cd src-tauri && cargo build && cd ..
+npm run app
+```
+
+For renderer-only development (no Tauri bridge):
+
+```sh
+npm run dev
+```
+
+---
+
+## Scripts
+
+| Command | |
+|---|---|
+| `npm run app` | Desktop app via Tauri |
+| `npm run app:build` | Production bundle |
+| `npm run dev` | Vite renderer on `127.0.0.1:1420` |
+| `npm run typecheck` | Codegen + `tsc --noEmit` |
+| `npm test` | vitest renderer suite |
+| `npm run mcp` | MCP sidecar against cwd |
+| `npm run mcp:smoke` | JSON-RPC tools/list smoke |
+| `npm run mcp:pipeline-smoke` | End-to-end plugin + skill + secret |
+| `cd src-tauri && cargo test` | Rust tests |
+| `cargo clippy --no-deps -- -D warnings` | Rust lints |
+
+---
 
 ## Architecture
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │ Tauri shell (Rust, src-tauri/)                                     │
-│  ├─ host_broker (HTTP)   → emits Tauri events to the renderer      │
-│  ├─ secret_broker (HTTP) → OS keyring (keyring crate)              │
-│  ├─ agent runtimes       → stdio adapters per CLI; ACP opt-in      │
-│  ├─ pty (portable-pty)   ├─ persistence (rusqlite)                 │
-│  ├─ iterate              ├─ fs_watch (notify)                      │
-│  └─ plugin:// protocol   → serves .polypore/plugins/<id>/<asset>   │
+│  ├─ host_broker (HTTP)    → emits Tauri events to the renderer     │
+│  ├─ secret_broker (HTTP)  → OS keyring, never returns plaintext    │
+│  ├─ agent runtimes        → stdio adapters per CLI; ACP opt-in     │
+│  ├─ pty (portable-pty)    ├─ persistence (rusqlite)                │
+│  ├─ snapshotter           ├─ fs_watch (notify)                     │
+│  └─ plugin:// protocol    → serves .polypore/plugins/<id>/<asset>  │
 ├────────────────────────────────────────────────────────────────────┤
-│ Renderer (React + dockview)                                        │
-│  ├─ HostRpcServer (packages/host)  contract per §4.3               │
+│ Renderer (React + Dockview)                                        │
+│  ├─ HostRpcServer (packages/host)  shared contract for all plugins │
 │  ├─ PolyporeHost loopback          built-in plugins use this       │
 │  ├─ PluginLoader                   3rd-party iframes use this      │
-│  └─ 9 built-in panels (plugins/)   chat | preview | editor | …     │
+│  └─ built-in panels (plugins/)                                     │
 ├────────────────────────────────────────────────────────────────────┤
 │ polypore-ide MCP sidecar (Node, packages/mcp-server/)              │
-│  ├─ tools (§22) → host_broker for state changes                    │
-│  └─ secrets.*   → secret_broker, never returns plaintext           │
+│  ├─ 22+ tools → host_broker for live state changes                 │
+│  └─ secrets.* → secret_broker, value never returned to agent       │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-Contracts live in `schemas/` and are codegen'd into
-`packages/sdk/src/types.gen.ts` + `packages/sdk/src/validators.gen.ts` by
-`scripts/codegen-ts.mjs`. Run `npm run codegen` after editing a schema.
+Contracts live in `schemas/` and codegen into `packages/sdk/src/types.gen.ts` and `packages/sdk/src/validators.gen.ts`. Run `npm run codegen` after editing a schema.
 
-## Scripts
+---
 
-| command | purpose |
+## Environment variables
+
+| | |
 |---|---|
-| `npm run dev` | Vite dev server on 127.0.0.1:1420 |
-| `npm run app` | run Polypore as a Tauri desktop app |
-| `npm run app:build` | build the desktop app bundle |
-| `npm test` | vitest renderer suite |
-| `npm run lint` | static TypeScript verifier used by MCP `verify.run` lint |
-| `npm run typecheck` | codegen + tsc --noEmit |
-| `npm run build` | production renderer bundle |
-| `npm run tauri dev` | run the Tauri shell against the dev server |
-| `npm run mcp` | run the MCP sidecar against the cwd |
-| `npm run mcp:smoke` | JSON-RPC tools/list smoke against the sidecar |
-| `npm run mcp:pipeline-smoke` | end-to-end plugin install + skill + secret |
-| `npm run mcp:host-broker-smoke` | MCP → host_broker bridge |
-| `npm run mcp:secret-broker-smoke` | MCP → secret_broker bridge |
-| `cargo test` (in `src-tauri`) | Rust shell tests |
-| `cargo clippy --no-deps -- -D warnings` | Rust lints |
+| `POLYPORE_PROJECT_ROOT` | Override cwd as the workspace root |
+| `POLYPORE_ENABLE_ACP=1` | Opt into the ACP adapter |
+| `POLYPORE_CONFIG_DIR` | Secrets metadata location (default `~/.config/polypore`) |
+| `POLYPORE_UPDATE_ENDPOINT` | Override the auto-updater endpoint |
 
-## Current State
+---
 
-- The default path is the desktop shell: project launcher/open-folder,
-  filesystem watcher, SQLite task/verify persistence, Git diff/worktree/revert,
-  pty terminal sessions, keyring-backed secrets, MCP brokers, and agent stdio
-  adapters are wired through Tauri commands.
-- The renderer runs the IDE surface through dockview panels: chat, preview,
-  editor, diff/history, terminal, verify, memory, agent, and problems. Built-in
-  panels use the same host RPC contract exposed to iframe plugins.
-- Browser mode remains useful for renderer development, but bridge-dependent
-  features intentionally show fallback errors there instead of pretending to
-  touch the filesystem, terminal, secrets, or agents.
+## Contributing
 
-## Environment toggles
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-| env var | effect |
-|---|---|
-| `POLYPORE_PROJECT_ROOT` | overrides cwd as the workspace root |
-| `POLYPORE_ENABLE_ACP=1` | opt into the (not-yet-complete) ACP adapter |
-| `POLYPORE_UPDATE_ENDPOINT` | report the updater as configured |
-| `POLYPORE_CONFIG_DIR` | secrets metadata location (default `~/.config/polypore`) |
+## License
+
+[MIT](LICENSE)
