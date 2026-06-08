@@ -29,3 +29,9 @@ yarn-error.log*
 
 # claude code agent worktrees
 .claude/worktrees/
+
+# local docs, mockups, reports — not published to the repo
+/docs/
+/reports/
+/mockup.html
+/preview-theme.html

@@ -4,8 +4,6 @@ Desktop IDE for driving agentic coding sessions. Tauri 2 shell, Vite + React 18
 renderer, JSON-Schema-driven contracts, and a panel-plugin architecture under
 the `polypore-ide` MCP server.
 
-Spec: `docs/specs/2026-05-16-master-implementation-plan.md`.
-
 ## Architecture
 
 ```
