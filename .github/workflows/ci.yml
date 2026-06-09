@@ -42,6 +42,8 @@ jobs:
             librsvg2-dev \
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
+      - name: prepare tauri frontendDist path
+        run: mkdir -p dist
       - run: cargo fmt --check
         working-directory: src-tauri
       - run: cargo clippy --no-deps -- -D warnings
