@@ -31,7 +31,9 @@ yarn-error.log*
 .claude/worktrees/
 
 # local docs, mockups, reports — not published to the repo
-/docs/
+/docs/*
+!/docs/manual/
+!/docs/manual/**
 /reports/
 /mockup.html
 /preview-theme.html
