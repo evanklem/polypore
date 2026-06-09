@@ -43,6 +43,43 @@ test('launcher shows the project picker immediately on boot', () => {
   expect(screen.getByRole('button', { name: /open folder/i })).toBeEnabled();
 });
 
+test('launcher keeps all recents in the scroll region after the visible rows cap', async () => {
+  const previousTauri = (window as typeof window & { __TAURI__?: unknown }).__TAURI__;
+  const recents = Array.from({ length: 10 }, (_, index) => ({
+    path: `/tmp/project-${index + 1}`,
+    name: `project-${index + 1}`,
+    last_opened: Date.now() - index * 1_000,
+    exists: true,
+  }));
+  Object.defineProperty(window, '__TAURI__', {
+    configurable: true,
+    value: {
+      core: {
+        invoke: vi.fn(async (command: string) => {
+          if (command === 'project_recent_list') return recents;
+          if (command === 'project_templates') return [];
+          return null;
+        }),
+      },
+    },
+  });
+
+  try {
+    const { container } = render(<Launcher onOpen={vi.fn()} />);
+
+    expect(await screen.findByText('project-10')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    const scrollRegion = container.querySelector('.launcher__recents-scroll');
+    expect(scrollRegion).toBeTruthy();
+    expect(within(scrollRegion as HTMLElement).getByRole('button', { name: /open project-10/i })).toBeInTheDocument();
+  } finally {
+    Object.defineProperty(window, '__TAURI__', {
+      configurable: true,
+      value: previousTauri,
+    });
+  }
+});
+
 test('confirm decider cleanup restores a deny default', async () => {
   const spy = vi.spyOn(HostRpcServer.prototype, 'setConfirmDecider');
 
@@ -311,6 +348,33 @@ test('project label opens project actions and launcher', async () => {
   fireEvent.click(screen.getByRole('menuitem', { name: /project launcher/i }));
   expect(screen.getByRole('dialog', { name: /project launcher/i })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole('button', { name: /^close$/i })).toBeInTheDocument());
+});
+
+test('new project launcher reopens as a full-screen cover over the workspace', async () => {
+  Object.defineProperty(window, 'showDirectoryPicker', {
+    configurable: true,
+    value: vi.fn().mockResolvedValue({ kind: 'directory' as const, name: 'launcher-cover-project' }),
+  });
+
+  try {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: /open folder/i }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /project launcher/i })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/forming workspace/i)).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /project polypore/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /new project.*create from a scaffold/i }));
+
+    const modal = screen.getByRole('dialog', { name: /project launcher/i });
+    expect(modal).toHaveClass('project-launcher-modal--active');
+    expect(modal).not.toHaveClass('project-launcher-modal--boot');
+    expect(modal.closest('.app-shell')).toBeNull();
+    expect(screen.getByRole('main', { name: /new project wizard/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument();
+  } finally {
+    Reflect.deleteProperty(window, 'showDirectoryPicker');
+  }
 });
 
 test('topbar workspace control opens its custom dropdown menu', () => {

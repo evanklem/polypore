@@ -229,11 +229,13 @@
 .launcher__recents-scroll {
   overflow-y: auto;
   min-height: 0;
+  max-height: 240px;
   padding-right: 4px;
   display: grid;
   gap: 14px;
   align-content: start;
   scrollbar-color: var(--accent-35) transparent;
+  overscroll-behavior: contain;
 }
 
 .launcher__recents-group {
@@ -740,6 +742,7 @@
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: clamp(18px, 4vw, 44px);
+  background-color: rgb(var(--c-surface-1-rgb));
   background-image: url('/fungus-hero.jpg');
   background-position: center;
   background-size: cover;
@@ -1127,22 +1130,22 @@
 @media (max-width: 720px) {
   .launcher {
     display: grid;
-    align-items: stretch;
-    justify-items: start;
+    align-items: center;
+    justify-items: center;
     padding: 10px;
-    min-height: 100vh;
-    height: auto;
-    width: 100%;
-    overflow-x: hidden;
+    min-height: 100dvh;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
   }
 
   .launcher__panel {
-    max-height: none;
-    min-height: calc(100vh - 20px);
-    width: min(340px, 100%);
-    max-width: min(340px, 100%);
+    max-height: calc(100dvh - 20px);
+    min-height: min(620px, calc(100dvh - 20px));
+    width: 100%;
+    max-width: 420px;
     min-width: 0;
-    margin: 0;
+    margin: 0 auto;
     overflow-x: hidden;
   }
 

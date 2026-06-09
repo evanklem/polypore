@@ -2182,6 +2182,7 @@ function App() {
   }, []);
 
   return (
+    <>
     <main className="app-shell">
       {workspaceMounted && (
         <>
@@ -2219,28 +2220,6 @@ function App() {
             tauriInvoke={tauriInvoke}
           />
         </>
-      )}
-
-      {launcherMode && (
-        <div
-          className={`project-launcher-modal ${!launcherDismissable && projectVersion === 0 ? 'project-launcher-modal--boot' : ''}`}
-          role="dialog"
-          aria-label="project launcher"
-        >
-          <Launcher
-            initialMode={launcherMode}
-            onOpen={handleProjectOpened}
-            /* on the initial boot the launcher is the gate and has no
-               close affordance. once a project is loaded — or the user
-               opens it via the top-bar project menu — it becomes
-               dismissable. */
-            onDismiss={
-              launcherDismissable || projectVersion > 0
-                ? () => setLauncherMode(null)
-                : undefined
-            }
-          />
-        </div>
       )}
 
       {projectLoading && <PolyporeLoadingScreen />}
@@ -2311,6 +2290,29 @@ function App() {
         />
       )}
     </main>
+    {launcherMode && (
+      <div
+        className={`project-launcher-modal project-launcher-modal--active ${!launcherDismissable && projectVersion === 0 ? 'project-launcher-modal--boot' : ''}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="project launcher"
+      >
+        <Launcher
+          initialMode={launcherMode}
+          onOpen={handleProjectOpened}
+          /* on the initial boot the launcher is the gate and has no
+             close affordance. once a project is loaded — or the user
+             opens it via the top-bar project menu — it becomes
+             dismissable. */
+          onDismiss={
+            launcherDismissable || projectVersion > 0
+              ? () => setLauncherMode(null)
+              : undefined
+          }
+        />
+      </div>
+    )}
+    </>
   );
 }
 
