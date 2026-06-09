@@ -3,7 +3,11 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { vi } from 'vitest';
 import App from './App';
 import { Launcher } from './Launcher';
-import { getWorkspacePreset } from './workspaces/presets';
+import {
+  getWorkspacePreset,
+  loadUserPresets,
+  workspaceLayoutStorageKey,
+} from './workspaces/presets';
 import { GitMenu } from './components/topbar/GitMenu';
 import { HostRpcServer } from '../packages/host/src';
 import { createLoopbackHost } from '../packages/sdk/src/host';
@@ -267,10 +271,10 @@ test('git branch header opens a compact git actions menu', () => {
   fireEvent.click(screen.getByRole('button', { name: /git branch none/i }));
 
   expect(screen.getByRole('menu', { name: /git actions/i })).toBeInTheDocument();
-  expect(screen.getByRole('menuitem', { name: /^status$/i })).toBeInTheDocument();
-  expect(screen.getByRole('menuitem', { name: /^fetch$/i })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: /^status/i })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: /^fetch/i })).toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: /pull --ff-only/i })).toBeInTheDocument();
-  expect(screen.getByRole('menuitem', { name: /^push$/i })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: /^push/i })).toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: /show log/i })).toBeInTheDocument();
 });
 
@@ -315,10 +319,103 @@ test('topbar workspace control opens its custom dropdown menu', () => {
   fireEvent.click(screen.getByRole('button', { name: /workspace default/i }));
   expect(screen.getByRole('menu', { name: /workspace presets/i })).toBeInTheDocument();
   expect(screen.getByRole('menuitemradio', { name: /default 9 panels/i })).toHaveAttribute('aria-checked', 'true');
-  expect(screen.getByRole('menuitem', { name: /save current workspace/i })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: /save current layout/i })).toBeEnabled();
+  expect(screen.queryByLabelText(/workspace name/i)).not.toBeInTheDocument();
   expect(screen.getByRole('menuitem', { name: /reset workspace/i })).toBeInTheDocument();
-  expect(screen.getByRole('menuitem', { name: /manage workspaces/i })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /permission mode/i })).not.toBeInTheDocument();
+});
+
+test('saving a workspace preset captures the layout and switches the host workspace', async () => {
+  window.localStorage.clear();
+  const handle = { kind: 'directory' as const, name: 'workspace-project' };
+  const layout = {
+    panels: { editor: { id: 'editor' } },
+    grid: { root: { type: 'leaf' } },
+  };
+  const setState = vi.spyOn(HostRpcServer.prototype, 'setState');
+  const previousDockview = (window as typeof window & {
+    __polyporeDockview?: Record<string, unknown>;
+  }).__polyporeDockview;
+  Object.defineProperty(window, 'showDirectoryPicker', {
+    configurable: true,
+    value: vi.fn().mockResolvedValue(handle),
+  });
+
+  try {
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: /open folder/i }));
+    await waitFor(() => expect(screen.queryByText(/forming workspace/i)).not.toBeInTheDocument());
+
+    const currentDockview = (window as typeof window & {
+      __polyporeDockview?: Record<string, unknown>;
+    }).__polyporeDockview ?? {};
+    (window as typeof window & {
+      __polyporeDockview?: Record<string, unknown>;
+    }).__polyporeDockview = {
+      ...currentDockview,
+      getLayout: () => layout,
+    };
+
+    fireEvent.click(screen.getByRole('button', { name: /workspace default/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /save current layout/i }));
+    const saveDialog = screen.getByRole('dialog', { name: /save current layout/i });
+    fireEvent.change(within(saveDialog).getByLabelText(/workspace name/i), {
+      target: { value: 'Review' },
+    });
+    fireEvent.click(within(saveDialog).getByRole('button', { name: /^save$/i }));
+
+    expect(await screen.findByRole('button', { name: /workspace review/i })).toBeInTheDocument();
+    expect(loadUserPresets('browser://workspace-project')).toEqual([
+      { name: 'Review', savedAt: expect.any(Number) },
+    ]);
+    expect(JSON.parse(window.localStorage.getItem(
+      workspaceLayoutStorageKey('Review', 'browser://workspace-project'),
+    ) ?? '')).toEqual(layout);
+    expect(setState).toHaveBeenCalledWith('workspace', 'Review');
+
+    window.localStorage.setItem(
+      workspaceLayoutStorageKey('Default', 'browser://workspace-project'),
+      JSON.stringify({ panels: { stale: { id: 'stale' } }, grid: {} }),
+    );
+    window.localStorage.setItem(
+      workspaceLayoutStorageKey('Review', 'browser://workspace-project'),
+      JSON.stringify({ panels: {}, grid: {} }),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /workspace review/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /default 9 panels/i }));
+
+    expect(screen.getByRole('button', { name: /workspace default/i })).toBeInTheDocument();
+    expect(window.localStorage.getItem(
+      workspaceLayoutStorageKey('Default', 'browser://workspace-project'),
+    )).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /workspace default/i }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /^review$/i }));
+
+    expect(screen.getByRole('button', { name: /workspace review/i })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(
+      workspaceLayoutStorageKey('Review', 'browser://workspace-project'),
+    ) ?? '')).toEqual(layout);
+
+    window.localStorage.setItem(
+      workspaceLayoutStorageKey('Review', 'browser://workspace-project'),
+      JSON.stringify({ panels: {}, grid: {} }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /workspace review/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /reset workspace/i }));
+
+    expect(screen.getByRole('button', { name: /workspace review/i })).toBeInTheDocument();
+    expect(JSON.parse(window.localStorage.getItem(
+      workspaceLayoutStorageKey('Review', 'browser://workspace-project'),
+    ) ?? '')).toEqual(layout);
+  } finally {
+    setState.mockRestore();
+    Reflect.deleteProperty(window, 'showDirectoryPicker');
+    (window as typeof window & {
+      __polyporeDockview?: Record<string, unknown>;
+    }).__polyporeDockview = previousDockview;
+  }
 });
 
 test('default workspace preset owns the 1/3 chat and 2/3 work area layout', () => {
@@ -371,8 +468,7 @@ test('global settings stores and masks credential handles', async () => {
 
   fireEvent.click(within(settingsNav).getByRole('button', { name: /^extensions/i }));
   expect(screen.getByRole('region', { name: /extensions/i })).toBeInTheDocument();
-  expect(await screen.findByText('polypore.chat.codex')).toBeInTheDocument();
-  expect(await screen.findByText('polypore.chat.claude')).toBeInTheDocument();
+  expect(await screen.findByText('no extensions installed')).toBeInTheDocument();
 
   fireEvent.click(within(settingsNav).getByRole('button', { name: /agents/i }));
   const agentsRegion = screen.getByRole('region', { name: /agents/i });
@@ -2380,10 +2476,10 @@ test('memory context tags documents read more than once with their read count', 
   expect(within(singleRow).queryByText('1x')).not.toBeInTheDocument();
 });
 
-test('editor tab exposes the workspace file directory sidebar without sample files', () => {
+test('editor tab exposes the workspace file directory sidebar without sample files', async () => {
   render(<App />);
 
-  fireEvent.click(screen.getByRole('tab', { name: /\{\} editor/i }));
+  fireEvent.click(await screen.findByRole('tab', { name: /\{\} editor/i }));
 
   expect(screen.getByRole('complementary', { name: /select file/i })).toBeInTheDocument();
   expect(screen.getByText('search files...')).toBeInTheDocument();
@@ -2397,10 +2493,12 @@ test('editor tab exposes the workspace file directory sidebar without sample fil
 test('editor can create a browser-backed file without the desktop filesystem bridge', async () => {
   render(<App />);
 
-  fireEvent.click(screen.getByRole('tab', { name: /\{\} editor/i }));
-  fireEvent.click(screen.getByRole('button', { name: /new file/i }));
-  fireEvent.change(screen.getByPlaceholderText('path/to/file'), { target: { value: 'src/new-file.ts' } });
-  fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+  fireEvent.click(await screen.findByRole('tab', { name: /\{\} editor/i }));
+  fireEvent.click(screen.getByRole('button', { name: /new entry/i }));
+  fireEvent.click(screen.getByRole('menuitem', { name: /new file/i }));
+  const filename = screen.getByPlaceholderText('filename.ts');
+  fireEvent.change(filename, { target: { value: 'src/new-file.ts' } });
+  fireEvent.keyDown(filename, { key: 'Enter' });
 
   expect(await screen.findByText('created')).toBeInTheDocument();
   expect(screen.getByText('new-file.ts')).toBeInTheDocument();
@@ -2536,8 +2634,8 @@ test('problems panel preserves info and hint severities', async () => {
     header={{ label: 'problems', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
   />);
 
-  const info = await screen.findByText('info');
-  const hint = screen.getByText('hint');
+  const info = await screen.findByText('unused import can be removed');
+  const hint = await screen.findByText('consider extracting a helper');
   expect(info.closest('button')).toHaveClass('problem-row--info');
   expect(hint.closest('button')).toHaveClass('problem-row--hint');
 });
@@ -2599,7 +2697,7 @@ test('verify panel hides clean empty state while deep scan is running', async ()
 
   await waitFor(() => expect(deepScan).toHaveBeenCalled());
   finishScan({ diagnostics: [] });
-  expect(await screen.findByText('deep scan · 0 findings')).toBeInTheDocument();
+  expect(await screen.findByText('deep scan · clean')).toBeInTheDocument();
   expect(screen.getByText('no problems · clean')).toBeInTheDocument();
 });
 
@@ -2907,8 +3005,9 @@ test('panel settings controls open the integrated settings panels section', asyn
   fireEvent.click(previewSettings);
 
   expect(screen.getByRole('dialog', { name: /^settings$/i })).toBeInTheDocument();
-  expect(screen.getByRole('region', { name: /panels/i })).toBeInTheDocument();
-  expect(screen.getByText('settings · preview')).toBeInTheDocument();
+  const panels = screen.getByRole('region', { name: /panels/i });
+  expect(within(panels).getByRole('heading', { name: 'preview' })).toBeInTheDocument();
+  expect(within(panels).getByText('polypore.preview')).toBeInTheDocument();
   expect(screen.getByText(/The active runtime surface for your project/i)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /open runtime commands/i })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /reset preview defaults/i })).not.toBeInTheDocument();
@@ -2919,7 +3018,9 @@ test('panel settings controls open the integrated settings panels section', asyn
   fireLegacyChatMessage({ type: 'open-settings' });
 
   expect(screen.getByRole('dialog', { name: /^settings$/i })).toBeInTheDocument();
-  expect(screen.getByText('settings · codex')).toBeInTheDocument();
+  const codexPanels = screen.getByRole('region', { name: /panels/i });
+  expect(within(codexPanels).getByRole('heading', { name: 'codex' })).toBeInTheDocument();
+  expect(within(codexPanels).getByText('polypore.chat.codex')).toBeInTheDocument();
 });
 
 test('diff tab shows changed files and supports working-tree and branch compare modes', () => {
@@ -2935,8 +3036,8 @@ test('diff tab shows changed files and supports working-tree and branch compare 
   />);
 
   expect(screen.getByText('changed files')).toBeInTheDocument();
-  expect(screen.getByText('HEAD vs working tree')).toBeInTheDocument();
-  expect(screen.getByText('HEAD')).toBeInTheDocument();
+  expect(screen.getByText('head vs working tree')).toBeInTheDocument();
+  expect(screen.getByText('head')).toBeInTheDocument();
   expect(screen.getAllByText('working tree').length).toBeGreaterThan(1);
   expect(screen.getByRole('button', { name: /working tree/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^branch$/i })).toBeInTheDocument();
@@ -2950,11 +3051,11 @@ test('diff tab shows changed files and supports working-tree and branch compare 
   fireEvent.click(screen.getByRole('button', { name: /^branch$/i }));
   expect(screen.getByText('upstream vs current branch')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /working tree/i }));
-  expect(screen.getByText('HEAD vs working tree')).toBeInTheDocument();
+  expect(screen.getByText('head vs working tree')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: /^compare$/i }));
   expect(screen.getByRole('dialog', { name: /compare refs/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /HEAD vs working tree/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /head vs working tree/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /upstream vs current branch/i })).toBeInTheDocument();
   expect(screen.queryByText(/HEAD~1/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/commit\.\.\./i)).not.toBeInTheDocument();

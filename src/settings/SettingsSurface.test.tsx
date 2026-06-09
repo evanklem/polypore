@@ -231,7 +231,7 @@ describe('SettingsSurface', () => {
 
   test('extensions section keeps install-by-id behind the advanced layer', async () => {
     render(<SettingsSurface services={stubServices()} initialSection="extensions" onClose={() => {}} />);
-    await waitFor(() => expect(screen.getByText('no plugins registered')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('no extensions installed')).toBeTruthy());
 
     // the raw install form is hidden until advanced is opened
     expect(screen.queryByPlaceholderText('plugin id')).toBeNull();
@@ -249,7 +249,7 @@ describe('SettingsSurface', () => {
         onClose={() => {}}
       />,
     );
-    await waitFor(() => expect(screen.getByText('no plugins registered')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('no extensions installed')).toBeTruthy());
 
     fireEvent.change(screen.getByPlaceholderText('git url or repo'), {
       target: { value: 'github.com/acme/cool-panel' },

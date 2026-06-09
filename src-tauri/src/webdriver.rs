@@ -105,7 +105,9 @@ pub struct WebLoginInput {
 fn playwright_in_project(root: &Path) -> bool {
     root.join("node_modules/playwright/package.json").exists()
         || root.join("node_modules/.bin/playwright").exists()
-        || root.join("node_modules/@playwright/test/package.json").exists()
+        || root
+            .join("node_modules/@playwright/test/package.json")
+            .exists()
 }
 
 /// Global Playwright on PATH (a `--version` probe), for repos that rely on a
@@ -136,7 +138,10 @@ impl WebDriverRegistry {
         session_id: &str,
         run: impl FnOnce(&mut WebDriver) -> Result<T, String>,
     ) -> Result<T, String> {
-        let mut drivers = self.drivers.lock().map_err(|_| "web driver lock failed".to_string())?;
+        let mut drivers = self
+            .drivers
+            .lock()
+            .map_err(|_| "web driver lock failed".to_string())?;
         if !drivers.contains_key(session_id) {
             drivers.insert(session_id.to_string(), spawn_driver()?);
         }
@@ -171,7 +176,10 @@ impl WebDriverRegistry {
 
     pub fn fill(&self, input: WebFillInput) -> Result<Value, String> {
         self.with_driver(&input.session_id, |driver| {
-            driver.command("fill", json!({ "selector": input.selector, "value": input.text }))?;
+            driver.command(
+                "fill",
+                json!({ "selector": input.selector, "value": input.text }),
+            )?;
             Ok(json!({ "ok": true }))
         })
     }
@@ -185,8 +193,14 @@ impl WebDriverRegistry {
             if let Some(url) = &input.url {
                 driver.command("navigate", json!({ "url": url }))?;
             }
-            driver.command("fill", json!({ "selector": input.username_selector, "value": username }))?;
-            driver.command("fill", json!({ "selector": input.password_selector, "value": password }))?;
+            driver.command(
+                "fill",
+                json!({ "selector": input.username_selector, "value": username }),
+            )?;
+            driver.command(
+                "fill",
+                json!({ "selector": input.password_selector, "value": password }),
+            )?;
             if let Some(submit) = &input.submit_selector {
                 driver.command("click", json!({ "selector": submit }))?;
             }
@@ -219,8 +233,14 @@ fn spawn_driver() -> Result<WebDriver, String> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|err| format!("failed to start web driver: {err}"))?;
-    let stdin = child.stdin.take().ok_or_else(|| "web driver stdin unavailable".to_string())?;
-    let stdout = child.stdout.take().ok_or_else(|| "web driver stdout unavailable".to_string())?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "web driver stdin unavailable".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "web driver stdout unavailable".to_string())?;
     let mut driver = WebDriver {
         child,
         stdin,
@@ -231,7 +251,10 @@ fn spawn_driver() -> Result<WebDriver, String> {
     // `{ error }` if the import failed — surface that as a clear message.
     let ready = driver.read_message()?;
     if ready.get("ready").and_then(|v| v.as_bool()) != Some(true) {
-        let err = ready.get("error").and_then(|v| v.as_str()).unwrap_or("web driver failed to start");
+        let err = ready
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("web driver failed to start");
         return Err(err.to_string());
     }
     Ok(driver)
@@ -240,10 +263,16 @@ fn spawn_driver() -> Result<WebDriver, String> {
 impl WebDriver {
     fn command(&mut self, command: &str, args: Value) -> Result<Value, String> {
         let seq = self.seq.fetch_add(1, Ordering::SeqCst) + 1;
-        write_message(&mut self.stdin, &json!({ "seq": seq, "command": command, "args": args }))?;
+        write_message(
+            &mut self.stdin,
+            &json!({ "seq": seq, "command": command, "args": args }),
+        )?;
         let response = self.read_message()?;
         if response.get("ok").and_then(|v| v.as_bool()) == Some(false) {
-            let message = response.get("error").and_then(|v| v.as_str()).unwrap_or("web driver command failed");
+            let message = response
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("web driver command failed");
             return Err(format!("{command} failed: {message}"));
         }
         Ok(response)
@@ -257,13 +286,16 @@ impl WebDriver {
 // ── Content-Length framing (request/response, blocking) ──────────────────────
 
 fn write_message(stdin: &mut ChildStdin, message: &Value) -> Result<(), String> {
-    let bytes = serde_json::to_vec(message).map_err(|err| format!("failed to encode web driver message: {err}"))?;
+    let bytes = serde_json::to_vec(message)
+        .map_err(|err| format!("failed to encode web driver message: {err}"))?;
     write!(stdin, "Content-Length: {}\r\n\r\n", bytes.len())
         .map_err(|err| format!("failed to write web driver header: {err}"))?;
     stdin
         .write_all(&bytes)
         .map_err(|err| format!("failed to write web driver body: {err}"))?;
-    stdin.flush().map_err(|err| format!("failed to flush web driver message: {err}"))
+    stdin
+        .flush()
+        .map_err(|err| format!("failed to flush web driver message: {err}"))
 }
 
 fn read_message(reader: &mut BufReader<ChildStdout>, _timeout: Duration) -> Result<Value, String> {
@@ -284,48 +316,70 @@ fn read_message(reader: &mut BufReader<ChildStdout>, _timeout: Duration) -> Resu
             content_length = value.trim().parse::<usize>().ok();
         }
     }
-    let len = content_length.ok_or_else(|| "web driver message missing Content-Length".to_string())?;
+    let len =
+        content_length.ok_or_else(|| "web driver message missing Content-Length".to_string())?;
     let mut body = vec![0_u8; len];
     reader
         .read_exact(&mut body)
         .map_err(|err| format!("failed to read web driver body: {err}"))?;
-    serde_json::from_slice(&body).map_err(|err| format!("failed to parse web driver message: {err}"))
+    serde_json::from_slice(&body)
+        .map_err(|err| format!("failed to parse web driver message: {err}"))
 }
 
 // ── Tauri commands ───────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub fn debug_web_capabilities() -> CapabilitiesOutput {
-    CapabilitiesOutput { web_auto_nav: web_auto_nav_available() }
+    CapabilitiesOutput {
+        web_auto_nav: web_auto_nav_available(),
+    }
 }
 
 #[tauri::command]
-pub fn debug_web_start(registry: tauri::State<'_, WebDriverRegistry>, input: WebSessionInput) -> Result<Value, String> {
+pub fn debug_web_start(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    input: WebSessionInput,
+) -> Result<Value, String> {
     registry.start(input)
 }
 
 #[tauri::command]
-pub fn debug_web_navigate(registry: tauri::State<'_, WebDriverRegistry>, input: WebNavigateInput) -> Result<Value, String> {
+pub fn debug_web_navigate(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    input: WebNavigateInput,
+) -> Result<Value, String> {
     registry.navigate(input)
 }
 
 #[tauri::command]
-pub fn debug_web_click(registry: tauri::State<'_, WebDriverRegistry>, input: WebClickInput) -> Result<Value, String> {
+pub fn debug_web_click(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    input: WebClickInput,
+) -> Result<Value, String> {
     registry.click(input)
 }
 
 #[tauri::command]
-pub fn debug_web_fill(registry: tauri::State<'_, WebDriverRegistry>, input: WebFillInput) -> Result<Value, String> {
+pub fn debug_web_fill(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    input: WebFillInput,
+) -> Result<Value, String> {
     registry.fill(input)
 }
 
 #[tauri::command]
-pub fn debug_web_login(registry: tauri::State<'_, WebDriverRegistry>, input: WebLoginInput) -> Result<Value, String> {
+pub fn debug_web_login(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    input: WebLoginInput,
+) -> Result<Value, String> {
     registry.login(input)
 }
 
 #[tauri::command]
-pub fn debug_web_stop(registry: tauri::State<'_, WebDriverRegistry>, session_id: String) -> Result<(), String> {
+pub fn debug_web_stop(
+    registry: tauri::State<'_, WebDriverRegistry>,
+    session_id: String,
+) -> Result<(), String> {
     registry.stop(&session_id)
 }
 

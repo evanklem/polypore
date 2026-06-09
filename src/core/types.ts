@@ -69,7 +69,12 @@ export type PanelDefinition = {
   defaultArea: 'left' | 'top' | 'center' | 'right' | 'bottom';
 };
 
-export type WorkspaceName = 'Default';
+export type WorkspaceName = string;
+
+export type UserWorkspacePreset = {
+  name: string;
+  savedAt: number;
+};
 
 export type WorkspaceLayoutItem = {
   slot: PanelType;

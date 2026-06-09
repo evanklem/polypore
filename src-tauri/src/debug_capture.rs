@@ -16,7 +16,7 @@ use crate::preview_native;
 #[serde(rename_all = "camelCase")]
 pub struct ScreenshotInput {
     /* accepted for API symmetry with the other capture tools; screenshot
-       targets a window by hint/pid, not by DAP session. */
+    targets a window by hint/pid, not by DAP session. */
     #[serde(default)]
     #[allow(dead_code)]
     pub session_id: Option<String>,
@@ -36,12 +36,18 @@ pub struct ScreenshotOutput {
 
 #[tauri::command]
 pub fn debug_capture_screenshot(input: ScreenshotInput) -> Result<ScreenshotOutput, String> {
-    let frame = preview_native::preview_capture_frame(input.root_pid, input.target.clone(), input.target)?;
-    let data_url = frame
-        .data_url
-        .ok_or_else(|| frame.error.unwrap_or_else(|| "no debuggee window captured".to_string()))?;
+    let frame =
+        preview_native::preview_capture_frame(input.root_pid, input.target.clone(), input.target)?;
+    let data_url = frame.data_url.ok_or_else(|| {
+        frame
+            .error
+            .unwrap_or_else(|| "no debuggee window captured".to_string())
+    })?;
     let (mime_type, data_base64) = split_data_url(&data_url)?;
-    Ok(ScreenshotOutput { mime_type, data_base64 })
+    Ok(ScreenshotOutput {
+        mime_type,
+        data_base64,
+    })
 }
 
 #[tauri::command]

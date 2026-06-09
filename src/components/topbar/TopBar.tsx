@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LaunchTarget } from '../../Launcher';
-import type { PanelType, WorkspaceName } from '../../core/types';
+import type { PanelType, UserWorkspacePreset, WorkspaceName } from '../../core/types';
 import { GitMenu } from './GitMenu';
 import { ProjectMenu } from './ProjectMenu';
 import { WorkspaceMenu } from './WorkspaceMenu';
@@ -19,6 +19,9 @@ export interface TopBarProps {
   onProjectOpened: (target: LaunchTarget) => void;
   onOpenProjectLauncher: (mode: 'recent' | 'new') => void;
   tauriInvoke: TauriInvoke;
+  userPresets: UserWorkspacePreset[];
+  onSaveAsPreset: (name: string) => string | null;
+  onDeletePreset: (name: string) => string | null;
 }
 
 type OpenMenu = 'project' | 'git' | 'workspace' | null;
@@ -36,6 +39,9 @@ export function TopBar({
   onProjectOpened,
   onOpenProjectLauncher,
   tauriInvoke,
+  userPresets,
+  onSaveAsPreset,
+  onDeletePreset,
 }: TopBarProps) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -96,6 +102,9 @@ export function TopBar({
         onToggle={toggle('workspace')}
         onWorkspaceChange={onWorkspaceChange}
         onResetWorkspace={onResetWorkspace}
+        userPresets={userPresets}
+        onSaveAsPreset={onSaveAsPreset}
+        onDeletePreset={onDeletePreset}
       />
       {/* Global chrome keeps to project / git / workspace /
           settings / help / brand. Agent workflow controls live in the

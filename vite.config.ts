@@ -46,11 +46,14 @@ function markdownFallback(): Plugin {
         res.end(`export default ${JSON.stringify(content)}`);
       });
     },
-    /* belt-and-suspenders: also cover the Rollup transform path */
+    /* belt-and-suspenders: also cover the Rollup transform path.
+     * Skip ?raw — Vite's built-in raw transform already produces
+     * `export default "..."`, and re-wrapping it would double-escape. */
     transform(code, id) {
       const qIdx = id.indexOf('?');
+      const query = qIdx >= 0 ? id.slice(qIdx) : '';
       const bare = qIdx >= 0 ? id.slice(0, qIdx) : id;
-      if (bare.endsWith('.md')) {
+      if (bare.endsWith('.md') && !query.includes('raw')) {
         return { code: `export default ${JSON.stringify(code)}`, map: null };
       }
     },
@@ -77,6 +80,9 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    environmentOptions: {
+      jsdom: { url: 'http://localhost' },
+    },
     setupFiles: './src/setupTests.ts',
     globals: true,
     include: ['src/**/*.test.{ts,tsx}', 'plugins/**/*.test.{ts,tsx}'],

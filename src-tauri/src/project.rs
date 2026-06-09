@@ -748,7 +748,12 @@ fn branch_compare_base_ref(root: &Path) -> String {
     .or_else(|| {
         git_output(
             root,
-            &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+            &[
+                "symbolic-ref",
+                "--quiet",
+                "--short",
+                "refs/remotes/origin/HEAD",
+            ],
         )
         .filter(|value| !value.is_empty())
     })
@@ -2085,8 +2090,16 @@ mod tests {
         assert_eq!(result.base_ref.as_deref(), Some("trunk"));
         assert_eq!(result.target_ref.as_deref(), Some("feature"));
         assert!(result.changed_files.contains(&"a.txt".to_string()));
-        assert!(result.diff.contains("-base"), "diff missing base: {}", result.diff);
-        assert!(result.diff.contains("+feature"), "diff missing feature: {}", result.diff);
+        assert!(
+            result.diff.contains("-base"),
+            "diff missing base: {}",
+            result.diff
+        );
+        assert!(
+            result.diff.contains("+feature"),
+            "diff missing feature: {}",
+            result.diff
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

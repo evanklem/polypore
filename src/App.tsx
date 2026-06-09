@@ -16,7 +16,7 @@ import { BottomBar } from './components/BottomBar';
 import './styles/tokens.css';
 import './App.css';
 import './glass.css';
-import { AgentId, PanelType, WorkspaceName } from './core/types';
+import { AgentId, PanelType, UserWorkspacePreset, WorkspaceName } from './core/types';
 import type {
   AgentBinaryStatus,
   GitRunResult,
@@ -24,7 +24,17 @@ import type {
   ProjectStatusResult,
   RecentProject,
 } from './core/tauri-types';
-import { getWorkspacePreset, workspacePresets } from './workspaces/presets';
+import {
+  deleteUserPreset,
+  getWorkspacePreset,
+  loadActiveWorkspace,
+  loadUserPresets,
+  restoreWorkspacePresetLayout,
+  saveActiveWorkspace,
+  saveUserPreset,
+  saveWorkspaceLayout,
+  workspaceLayoutStorageKey,
+} from './workspaces/presets';
 import { HostRpcServer, PluginLoader, buildPluginSrcdoc, createLocalStorageSecretStore, createMemorySecretStore, loadDotEnvIntoStore } from '../packages/host/src';
 import type { ConfirmDecision, ConfirmRequest, HostStoreInitialState, SecretStore } from '../packages/host/src';
 import type { FileTreeNode, DapFrame, DapScope, DapVariable, DebugStop, EditorSearchMatch, SkillPublisher } from '../packages/host/src';
@@ -475,7 +485,7 @@ function createAppHostInitialState(): HostStoreInitialState {
     state: {
       activeAgent: 'codex',
       permissionMode: 'default',
-      workspace: 'default',
+      workspace: DEFAULT_WORKSPACE,
       contextUsedPct: DEFAULT_CONTEXT_USED_PCT,
     },
     /* every discovered built-in plugin is registered with the host. once the
@@ -1514,18 +1524,16 @@ const GLOBAL_SETTINGS_SERVICES: GlobalSettingsServices = {
 };
 
 function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceName>(() => {
-    const saved = window.localStorage.getItem('polypore.workspace.savedPreset');
-    return workspacePresets.find((p) => p.name === saved)?.name ?? DEFAULT_WORKSPACE;
-  });
+  const [workspace, setWorkspace] = useState<WorkspaceName>(DEFAULT_WORKSPACE);
   const workspacePreset = useMemo(() => getWorkspacePreset(workspace), [workspace]);
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
+  const [userPresets, setUserPresets] = useState<UserWorkspacePreset[]>([]);
   const [projectPath, setProjectPath] = useState('');
   const [projectVersion, setProjectVersion] = useState(0);
   const workspaceMounted = projectVersion > 0 || import.meta.env.MODE === 'test';
 
   const layoutStorageKey = useMemo(
-    () => (projectPath ? `polypore.layout.v1|${workspace}|${projectPath}` : undefined),
+    () => (projectPath ? workspaceLayoutStorageKey(workspace, projectPath) : undefined),
     [projectPath, workspace],
   );
   /* the launcher is the first screen on boot — adobe-style. once the user
@@ -1780,24 +1788,68 @@ function App() {
   }, [clearWorkspaceMountSchedule]);
 
   const handleWorkspaceChange = useCallback((newWorkspace: WorkspaceName) => {
+    if (projectPath && !restoreWorkspacePresetLayout(projectPath, newWorkspace)) {
+      return;
+    }
     setWorkspace(newWorkspace);
     setWorkspaceVersion((v) => v + 1);
-  }, []);
+    appHostServer.setState('workspace', newWorkspace);
+    try {
+      saveActiveWorkspace(projectPath, newWorkspace);
+    } catch {
+      // The workspace still switches for this session when persistence is unavailable.
+    }
+  }, [projectPath]);
 
   const handleResetWorkspace = useCallback(() => {
-    if (layoutStorageKey) {
-      window.localStorage.removeItem(layoutStorageKey);
+    if (projectPath && !restoreWorkspacePresetLayout(projectPath, workspace)) {
+      return;
     }
-    setWorkspace(DEFAULT_WORKSPACE);
     setWorkspaceVersion((v) => v + 1);
-  }, [layoutStorageKey]);
+    appHostServer.setState('workspace', workspace);
+  }, [projectPath, workspace]);
+
+  const handleSaveAsPreset = useCallback((name: string) => {
+    if (!projectPath) return 'open a project before saving a preset';
+    const dock = (window as Window & {
+      __polyporeDockview?: { getLayout: () => unknown };
+    }).__polyporeDockview;
+    if (!dock?.getLayout) return 'workspace layout is still loading';
+    try {
+      const layout = dock.getLayout();
+      saveWorkspaceLayout(projectPath, workspace, layout);
+      const updated = saveUserPreset(projectPath, name, layout);
+      setUserPresets(updated);
+      handleWorkspaceChange(name);
+      return null;
+    } catch {
+      return 'could not save the workspace preset';
+    }
+  }, [projectPath, workspace, handleWorkspaceChange]);
+
+  const handleDeletePreset = useCallback((name: string) => {
+    if (!projectPath) return 'open a project before deleting a preset';
+    try {
+      const updated = deleteUserPreset(projectPath, name);
+      setUserPresets(updated);
+      return null;
+    } catch {
+      return 'could not delete the workspace preset';
+    }
+  }, [projectPath]);
 
   const handleProjectOpened = useCallback((target: LaunchTarget) => {
     clearLoadingHideTimer();
     clearProjectOpenPublish();
+    const nextUserPresets = loadUserPresets(target.path);
+    const nextWorkspace = loadActiveWorkspace(target.path, nextUserPresets) ?? DEFAULT_WORKSPACE;
+    restoreWorkspacePresetLayout(target.path, nextWorkspace);
     setProjectPath(target.path);
+    setUserPresets(nextUserPresets);
+    setWorkspace(nextWorkspace);
     appHostServer.resetProjectState(createAppHostInitialState());
     appHostServer.setState('project', { path: target.path, name: target.name });
+    appHostServer.setState('workspace', nextWorkspace);
     /* hydrate user skills from disk so the agent panel shows them after reload */
     tauriInvoke<Array<Record<string, unknown>>>('skill_list')?.then((userSkills) => {
       let seq = Date.now();
@@ -2146,6 +2198,9 @@ function App() {
             onProjectOpened={handleProjectOpened}
             onOpenProjectLauncher={(mode) => { setLauncherMode(mode); setLauncherDismissable(true); }}
             tauriInvoke={tauriInvoke}
+            userPresets={userPresets}
+            onSaveAsPreset={handleSaveAsPreset}
+            onDeletePreset={handleDeletePreset}
           />
 
           <React.Suspense fallback={null}>

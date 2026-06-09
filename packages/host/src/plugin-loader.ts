@@ -263,6 +263,7 @@ function permissionForMethod(method: string): HostPermission | null {
       return 'terminal.spawn';
     case 'terminal.stop':
       return 'terminal.stop';
+    case 'terminal.resize':
     case 'terminal.write':
       return 'terminal.write';
     case 'workspace.activePanel':

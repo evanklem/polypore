@@ -124,7 +124,12 @@ pub fn lsp_diagnostics_document(
     let mut diagnostics = vec![];
 
     for spec in specs.iter().filter(|spec| matches_spec(&file, spec)) {
-        match collect_from_server(spec, &root, std::slice::from_ref(&file), Some((&file, text.as_str()))) {
+        match collect_from_server(
+            spec,
+            &root,
+            std::slice::from_ref(&file),
+            Some((&file, text.as_str())),
+        ) {
             Ok(mut items) => {
                 servers.push(LspServerStatus {
                     id: spec.id.clone(),

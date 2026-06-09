@@ -102,7 +102,11 @@ pub fn take_snapshot(
     let _guard = lock_arc.lock().expect("snapshot lock poisoned");
 
     let snap_t0 = Instant::now();
-    eprintln!("polypore: [snap-start] {} kind={}", worktree_id, kind.as_str());
+    eprintln!(
+        "polypore: [snap-start] {} kind={}",
+        worktree_id,
+        kind.as_str()
+    );
 
     let git_dir = git_dir(worktree_path)?;
     let temp_index = git_dir.join(format!("polypore-snap-{}.idx", sanitize_id(worktree_id)));
@@ -137,7 +141,11 @@ pub fn take_snapshot(
 
     let _ = std::fs::remove_file(&temp_index);
 
-    eprintln!("polypore: [snap-done] {} total={}ms", worktree_id, snap_t0.elapsed().as_millis());
+    eprintln!(
+        "polypore: [snap-done] {} total={}ms",
+        worktree_id,
+        snap_t0.elapsed().as_millis()
+    );
     Ok(SnapshotRecord {
         worktree_id: worktree_id.to_string(),
         commit_hash: commit,
@@ -347,7 +355,6 @@ impl SchedulerPolicy {
         }
         SnapshotDecision::Snapshot(SnapshotKind::Interactive)
     }
-
 }
 
 /* Per-worktree scheduler. Spawned at project-open and any time a new
@@ -366,8 +373,8 @@ pub struct SchedulerHandle {
 pub struct SnapshotterRegistry {
     inner: Mutex<HashMap<String, Arc<SchedulerHandle>>>,
     /* Shared suppression gate. When set to a future epoch-ms timestamp,
-       all scheduler ticks skip `git add -A` until that time passes.
-       Used to prevent snapshot I/O from competing with sash drag events. */
+    all scheduler ticks skip `git add -A` until that time passes.
+    Used to prevent snapshot I/O from competing with sash drag events. */
     suppress_until_ms: Arc<AtomicI64>,
 }
 
@@ -385,7 +392,12 @@ impl SnapshotterRegistry {
         if guard.contains_key(&worktree_id) {
             return Ok(());
         }
-        let handle = spawn_scheduler(app.clone(), worktree_id.clone(), worktree_path, Arc::clone(&self.suppress_until_ms))?;
+        let handle = spawn_scheduler(
+            app.clone(),
+            worktree_id.clone(),
+            worktree_path,
+            Arc::clone(&self.suppress_until_ms),
+        )?;
         guard.insert(worktree_id, Arc::new(handle));
         Ok(())
     }
@@ -509,11 +521,10 @@ async fn snapshot_and_emit<R: Runtime>(
 ) -> Result<SnapshotRecord, String> {
     let wt_path_owned = wt_path.to_path_buf();
     let wt_id_owned = wt_id.to_string();
-    let record = async_runtime::spawn_blocking(move || {
-        take_snapshot(&wt_path_owned, &wt_id_owned, kind)
-    })
-    .await
-    .map_err(|err| format!("snapshot task panicked: {err}"))??;
+    let record =
+        async_runtime::spawn_blocking(move || take_snapshot(&wt_path_owned, &wt_id_owned, kind))
+            .await
+            .map_err(|err| format!("snapshot task panicked: {err}"))??;
 
     {
         let mut p = policy.lock().await;
@@ -566,8 +577,8 @@ pub fn snapshot_signal_turn_end<R: Runtime>(app: AppHandle<R>, worktree_id: Stri
 }
 
 /* Suppress autonomous snapshot ticks for `duration_ms` milliseconds.
-   Call on sash-drag start (large window) and again on release (short cooldown)
-   to prevent git add -A from competing with WebKitGTK IPC during drag. */
+Call on sash-drag start (large window) and again on release (short cooldown)
+to prevent git add -A from competing with WebKitGTK IPC during drag. */
 #[tauri::command]
 pub fn snapshot_suppress<R: Runtime>(app: AppHandle<R>, duration_ms: u64) {
     let registry = app.state::<SnapshotterRegistry>();

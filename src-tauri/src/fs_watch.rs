@@ -225,18 +225,25 @@ fn agent_skill_roots() -> Vec<(&'static str, PathBuf)> {
 }
 
 #[tauri::command]
-pub fn skill_publish(id: String, name: String, body: String, agents: Vec<String>) -> Result<Vec<String>, String> {
+pub fn skill_publish(
+    id: String,
+    name: String,
+    body: String,
+    agents: Vec<String>,
+) -> Result<Vec<String>, String> {
     let project_root = project_context::active_project_root()?;
     let skills_dir = project_root.join(".polypore").join("skills");
     /* write as a dir-based skill: {id}/SKILL.md — matches the format that
-       Claude Code's slash-completion and Polypore's slash catalog both expect. */
+    Claude Code's slash-completion and Polypore's slash catalog both expect. */
     let skill_dir = skills_dir.join(&id);
     std::fs::create_dir_all(&skill_dir)
         .map_err(|err| format!("failed to create skill dir: {err}"))?;
-    let description: String = body.lines()
+    let description: String = body
+        .lines()
         .find(|l| !l.trim().is_empty())
         .unwrap_or("")
-        .chars().take(100)
+        .chars()
+        .take(100)
         .collect();
     let skill_md = format!("---\nname: {name}\ndescription: {description}\n---\n\n{body}");
     let skill_file = skill_dir.join("SKILL.md");
@@ -247,13 +254,21 @@ pub fn skill_publish(id: String, name: String, body: String, agents: Vec<String>
 
     let mut published = Vec::new();
     for (agent, dir) in agent_skill_roots() {
-        if !agents.contains(&agent.to_string()) { continue; }
-        if !dir.exists() { continue; }
+        if !agents.contains(&agent.to_string()) {
+            continue;
+        }
+        if !dir.exists() {
+            continue;
+        }
         /* directory symlink has no extension; also clean up legacy .md symlink */
         let target = dir.join(&id);
         let legacy = dir.join(format!("{id}.md"));
-        if legacy.symlink_metadata().is_ok() { let _ = std::fs::remove_file(&legacy); }
-        if target.symlink_metadata().is_ok() { let _ = std::fs::remove_file(&target); }
+        if legacy.symlink_metadata().is_ok() {
+            let _ = std::fs::remove_file(&legacy);
+        }
+        if target.symlink_metadata().is_ok() {
+            let _ = std::fs::remove_file(&target);
+        }
         #[cfg(unix)]
         {
             if std::os::unix::fs::symlink(&skill_dir, &target).is_ok() {
@@ -279,13 +294,15 @@ pub fn skill_unpublish(id: String) -> Result<Vec<String>, String> {
         let dir_target = dir.join(&id);
         let flat_target = dir.join(format!("{id}.md"));
         let mut any = false;
-        if dir_target.symlink_metadata().is_ok() {
-            if std::fs::remove_file(&dir_target).is_ok() { any = true; }
+        if dir_target.symlink_metadata().is_ok() && std::fs::remove_file(&dir_target).is_ok() {
+            any = true;
         }
-        if flat_target.symlink_metadata().is_ok() {
-            if std::fs::remove_file(&flat_target).is_ok() { any = true; }
+        if flat_target.symlink_metadata().is_ok() && std::fs::remove_file(&flat_target).is_ok() {
+            any = true;
         }
-        if any { removed.push(agent.to_string()); }
+        if any {
+            removed.push(agent.to_string());
+        }
     }
     Ok(removed)
 }
@@ -296,8 +313,12 @@ pub fn skill_delete(id: String) -> Result<(), String> {
     for (_, dir) in agent_skill_roots() {
         let dir_target = dir.join(&id);
         let flat_target = dir.join(format!("{id}.md"));
-        if dir_target.symlink_metadata().is_ok() { let _ = std::fs::remove_file(&dir_target); }
-        if flat_target.symlink_metadata().is_ok() { let _ = std::fs::remove_file(&flat_target); }
+        if dir_target.symlink_metadata().is_ok() {
+            let _ = std::fs::remove_file(&dir_target);
+        }
+        if flat_target.symlink_metadata().is_ok() {
+            let _ = std::fs::remove_file(&flat_target);
+        }
     }
     /* delete the source directory from the project */
     let project_root = project_context::active_project_root()?;
@@ -313,7 +334,9 @@ pub fn skill_delete(id: String) -> Result<(), String> {
 pub fn skill_list() -> Result<Vec<serde_json::Value>, String> {
     let project_root = project_context::active_project_root()?;
     let skills_dir = project_root.join(".polypore").join("skills");
-    if !skills_dir.exists() { return Ok(vec![]); }
+    if !skills_dir.exists() {
+        return Ok(vec![]);
+    }
     let read = match std::fs::read_dir(&skills_dir) {
         Ok(r) => r,
         Err(_) => return Ok(vec![]),
@@ -328,7 +351,9 @@ pub fn skill_list() -> Result<Vec<serde_json::Value>, String> {
                 _ => continue,
             };
             let skill_file = path.join("SKILL.md");
-            if !skill_file.exists() { continue; }
+            if !skill_file.exists() {
+                continue;
+            }
             let content = match std::fs::read_to_string(&skill_file) {
                 Ok(c) => c,
                 Err(_) => continue,
@@ -343,9 +368,9 @@ pub fn skill_list() -> Result<Vec<serde_json::Value>, String> {
                 "origin": "polypore",
                 "publishedTo": published_to,
             }));
-        } else if path.extension().map_or(false, |e| e == "md") {
+        } else if path.extension().is_some_and(|e| e == "md") {
             /* flat .md skill (legacy format) — migrate to directory on the fly so
-               Codex can discover it (Codex only reads {id}/SKILL.md directories) */
+            Codex can discover it (Codex only reads {id}/SKILL.md directories) */
             let stem = match path.file_stem().and_then(|n| n.to_str()) {
                 Some(s) if !s.is_empty() => s.to_string(),
                 _ => continue,
@@ -367,9 +392,13 @@ pub fn skill_list() -> Result<Vec<serde_json::Value>, String> {
                     let dir_link = agent_dir.join(&stem);
                     if flat_link.symlink_metadata().is_ok() {
                         let _ = std::fs::remove_file(&flat_link);
-                        if dir_link.symlink_metadata().is_ok() { let _ = std::fs::remove_file(&dir_link); }
+                        if dir_link.symlink_metadata().is_ok() {
+                            let _ = std::fs::remove_file(&dir_link);
+                        }
                         #[cfg(unix)]
-                        { let _ = std::os::unix::fs::symlink(&skill_dir, &dir_link); }
+                        {
+                            let _ = std::os::unix::fs::symlink(&skill_dir, &dir_link);
+                        }
                     }
                 }
                 let _ = std::fs::remove_file(&path); /* remove old flat file */
@@ -402,12 +431,16 @@ fn parse_skill_frontmatter(content: &str, fallback_id: &str) -> (String, String,
     let mut description = String::new();
     let body_start;
     /* check for YAML frontmatter block */
-    if lines.next().map_or(false, |l| l.trim() == "---") {
+    if lines.next().is_some_and(|l| l.trim() == "---") {
         let mut consumed = 4usize; /* "---\n" */
         let mut found_end = false;
         for line in &mut lines {
             consumed += line.len() + 1;
-            if line.trim() == "---" { found_end = true; consumed += 0; break; }
+            if line.trim() == "---" {
+                found_end = true;
+                consumed += 0;
+                break;
+            }
             if let Some(rest) = line.strip_prefix("name:") {
                 name = rest.trim().to_string();
             } else if let Some(rest) = line.strip_prefix("description:") {
@@ -424,10 +457,12 @@ fn parse_skill_frontmatter(content: &str, fallback_id: &str) -> (String, String,
         content.to_string()
     };
     if description.is_empty() {
-        description = body.lines()
+        description = body
+            .lines()
             .find(|l| !l.trim().is_empty())
             .unwrap_or("")
-            .chars().take(120)
+            .chars()
+            .take(120)
             .collect();
     }
     (name, description, body)
@@ -531,7 +566,9 @@ pub async fn knowledge_pick_base_folder() -> Result<Option<KnowledgeBase>, Strin
 }
 
 #[tauri::command]
-pub fn knowledge_base_suggest_location(input: KnowledgeBaseLocationInput) -> Result<String, String> {
+pub fn knowledge_base_suggest_location(
+    input: KnowledgeBaseLocationInput,
+) -> Result<String, String> {
     let root = unique_base_path(&default_knowledge_base_path(&input.name, &input.scope)?);
     Ok(folder_display(&root))
 }
@@ -547,7 +584,10 @@ pub async fn knowledge_pick_base_location() -> Result<KnowledgeBaseLocation, Str
     .map_err(|err| format!("folder dialog dispatch failed: {err}"))?;
 
     let Some(path) = result else {
-        return Ok(KnowledgeBaseLocation { location: None, scope: None });
+        return Ok(KnowledgeBaseLocation {
+            location: None,
+            scope: None,
+        });
     };
     let scope = scope_for_folder(&path)?;
     Ok(KnowledgeBaseLocation {
@@ -563,7 +603,12 @@ pub fn knowledge_base_create(input: KnowledgeBaseCreateInput) -> Result<Knowledg
     if name.is_empty() {
         return Err("knowledge base name is required".to_string());
     }
-    let root = if let Some(raw_root) = input.root.as_deref().map(str::trim).filter(|item| !item.is_empty()) {
+    let root = if let Some(raw_root) = input
+        .root
+        .as_deref()
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+    {
         expand_user_path(raw_root)?
     } else {
         unique_base_path(&default_knowledge_base_path(name, scope)?)
@@ -579,7 +624,9 @@ pub fn knowledge_base_create(input: KnowledgeBaseCreateInput) -> Result<Knowledg
         root: folder_display(&root),
         scope: scope.to_string(),
         suggested_scope: suggested_scope.clone(),
-        project_root: (scope == "project").then(project_root_display).transpose()?,
+        project_root: (scope == "project")
+            .then(project_root_display)
+            .transpose()?,
     };
     upsert_knowledge_base(base)
 }
@@ -593,7 +640,9 @@ pub fn knowledge_base_set_scope(id: String, scope: String) -> Result<KnowledgeBa
         .find(|item| item.id == id)
         .ok_or_else(|| format!("knowledge base not found: {id}"))?;
     base.scope = scope.to_string();
-    base.project_root = (scope == "project").then(project_root_display).transpose()?;
+    base.project_root = (scope == "project")
+        .then(project_root_display)
+        .transpose()?;
     upsert_knowledge_base(base)
 }
 
@@ -616,18 +665,16 @@ pub fn knowledge_base_rename(id: String, name: String) -> Result<KnowledgeBase, 
 #[tauri::command]
 pub fn knowledge_base_delete(id: String) -> Result<(), String> {
     let bases = read_knowledge_registry()?;
-    let base = bases
-        .iter()
-        .find(|item| item.id == id)
-        .cloned();
+    let base = bases.iter().find(|item| item.id == id).cloned();
     let root = base.as_ref().map(|b| PathBuf::from(&b.root));
     /* remove the on-disk folder before forgetting the registry entry so a
-       partial failure (permission denied, fs error) leaves the user with a
-       still-visible base they can retry on, rather than orphaned bytes. */
+    partial failure (permission denied, fs error) leaves the user with a
+    still-visible base they can retry on, rather than orphaned bytes. */
     if let Some(path) = root.as_ref() {
         if path.exists() {
-            std::fs::remove_dir_all(path)
-                .map_err(|err| format!("failed to remove memory folder {}: {err}", path.display()))?;
+            std::fs::remove_dir_all(path).map_err(|err| {
+                format!("failed to remove memory folder {}: {err}", path.display())
+            })?;
         }
     }
     let remaining: Vec<KnowledgeBase> = bases.into_iter().filter(|item| item.id != id).collect();
@@ -635,10 +682,7 @@ pub fn knowledge_base_delete(id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn knowledge_folder_create(
-    base_id: Option<String>,
-    path: String,
-) -> Result<(), String> {
+pub fn knowledge_folder_create(base_id: Option<String>, path: String) -> Result<(), String> {
     let cleaned = path.trim().trim_matches('/').to_string();
     if cleaned.is_empty() {
         return Err("folder name is required".to_string());
@@ -694,10 +738,7 @@ pub fn knowledge_folder_rename(
 }
 
 #[tauri::command]
-pub fn knowledge_folder_delete(
-    base_id: Option<String>,
-    path: String,
-) -> Result<(), String> {
+pub fn knowledge_folder_delete(base_id: Option<String>, path: String) -> Result<(), String> {
     let cleaned = path.trim().trim_matches('/').to_string();
     if cleaned.is_empty() {
         return Err("folder name is required".to_string());
@@ -711,10 +752,7 @@ pub fn knowledge_folder_delete(
 }
 
 #[tauri::command]
-pub fn knowledge_delete_doc(
-    base_id: Option<String>,
-    path: String,
-) -> Result<(), String> {
+pub fn knowledge_delete_doc(base_id: Option<String>, path: String) -> Result<(), String> {
     let cleaned = path.trim().trim_matches('/').to_string();
     if cleaned.is_empty() {
         return Err("file path is required".to_string());
@@ -835,14 +873,7 @@ fn always_ignored_dir_name(name: &str) -> bool {
 fn built_in_ignored_dir_name(name: &str) -> bool {
     matches!(
         name,
-        ".idea"
-            | ".DS_Store"
-            | "node_modules"
-            | "target"
-            | "dist"
-            | "build"
-            | ".vite"
-            | ".tauri"
+        ".idea" | ".DS_Store" | "node_modules" | "target" | "dist" | "build" | ".vite" | ".tauri"
     )
 }
 
@@ -884,10 +915,12 @@ fn ignored_dir_path_by_relative(relative: &Path, name: &str, config: &FileTreeCo
 }
 
 fn built_in_ignored_dir_path(relative: &Path) -> bool {
-    let mut components = relative.components().filter_map(|component| match component {
-        std::path::Component::Normal(name) => name.to_str(),
-        _ => None,
-    });
+    let mut components = relative
+        .components()
+        .filter_map(|component| match component {
+            std::path::Component::Normal(name) => name.to_str(),
+            _ => None,
+        });
     matches!(components.next(), Some(".claude")) && matches!(components.next(), Some("worktrees"))
 }
 
@@ -935,7 +968,9 @@ fn normalized_extension(path: &Path) -> String {
 impl FileTreeConfig {
     fn dir_matches(&self, patterns: &[String], relative: &Path, name: &str) -> bool {
         let relative = relative.to_string_lossy().replace('\\', "/");
-        patterns.iter().any(|pattern| dir_pattern_matches(pattern, &relative, name))
+        patterns
+            .iter()
+            .any(|pattern| dir_pattern_matches(pattern, &relative, name))
     }
 
     fn extension_matches(&self, patterns: &[String], extension: &str) -> bool {
@@ -1082,8 +1117,12 @@ fn read_knowledge_registry() -> Result<Vec<KnowledgeBase>, String> {
 fn write_knowledge_registry(bases: &[KnowledgeBase]) -> Result<(), String> {
     let path = knowledge_registry_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create documents config {}: {err}", parent.display()))?;
+        std::fs::create_dir_all(parent).map_err(|err| {
+            format!(
+                "failed to create documents config {}: {err}",
+                parent.display()
+            )
+        })?;
     }
     let raw = serde_json::to_string_pretty(bases)
         .map_err(|err| format!("failed to encode documents bases: {err}"))?;
@@ -1107,7 +1146,9 @@ fn visible_knowledge_bases() -> Result<Vec<KnowledgeBase>, String> {
         .iter()
         .any(|base| folder_starts_with(Path::new(&base.root), &default_root));
     if default_root.exists()
-        && !bases.iter().any(|base| same_folder(Path::new(&base.root), &default_root))
+        && !bases
+            .iter()
+            .any(|base| same_folder(Path::new(&base.root), &default_root))
         && !has_configured_base_under_default
     {
         bases.push(KnowledgeBase {
@@ -1132,9 +1173,12 @@ fn configure_knowledge_folder(path: PathBuf) -> Result<KnowledgeBase, String> {
     if !path.is_dir() {
         return Err("documents folder must be a directory".to_string());
     }
-    let root = path
-        .canonicalize()
-        .map_err(|err| format!("failed to resolve documents folder {}: {err}", path.display()))?;
+    let root = path.canonicalize().map_err(|err| {
+        format!(
+            "failed to resolve documents folder {}: {err}",
+            path.display()
+        )
+    })?;
     let registry = read_knowledge_registry()?;
     if let Some(existing) = registry
         .into_iter()
@@ -1155,14 +1199,18 @@ fn configure_knowledge_folder(path: PathBuf) -> Result<KnowledgeBase, String> {
         root: folder_display(&root),
         scope: suggested_scope.clone(),
         suggested_scope: suggested_scope.clone(),
-        project_root: (suggested_scope == "project").then(project_root_display).transpose()?,
+        project_root: (suggested_scope == "project")
+            .then(project_root_display)
+            .transpose()?,
     };
     upsert_knowledge_base(base)
 }
 
 fn upsert_knowledge_base(base: KnowledgeBase) -> Result<KnowledgeBase, String> {
     let mut bases = read_knowledge_registry()?;
-    bases.retain(|item| item.id != base.id && !same_folder(Path::new(&item.root), Path::new(&base.root)));
+    bases.retain(|item| {
+        item.id != base.id && !same_folder(Path::new(&item.root), Path::new(&base.root))
+    });
     bases.push(base.clone());
     write_knowledge_registry(&bases)?;
     Ok(base)
@@ -1196,12 +1244,14 @@ fn write_knowledge_preset(root: &Path, name: &str, preset: &str) -> Result<(), S
     for (relative, content) in files {
         let target = root.join(relative);
         if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|err| format!("failed to create preset folder {}: {err}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|err| {
+                format!("failed to create preset folder {}: {err}", parent.display())
+            })?;
         }
         if !target.exists() {
-            std::fs::write(&target, content)
-                .map_err(|err| format!("failed to write preset file {}: {err}", target.display()))?;
+            std::fs::write(&target, content).map_err(|err| {
+                format!("failed to write preset file {}: {err}", target.display())
+            })?;
         }
     }
     Ok(())
@@ -1319,12 +1369,20 @@ fn resolve_existing_or_read_path(
 
 fn resolve_knowledge_path(path: &str, base_id: Option<&str>) -> Result<PathBuf, String> {
     let root = resolve_knowledge_root(base_id)?;
-    resolve_existing_or_read_path(&root, path, "knowledge path must stay inside its documents base")
+    resolve_existing_or_read_path(
+        &root,
+        path,
+        "knowledge path must stay inside its documents base",
+    )
 }
 
 fn resolve_knowledge_write_path(path: &str, base_id: Option<&str>) -> Result<PathBuf, String> {
     let root = resolve_knowledge_root(base_id)?;
-    resolve_write_path(&root, path, "knowledge path must stay inside its documents base")
+    resolve_write_path(
+        &root,
+        path,
+        "knowledge path must stay inside its documents base",
+    )
 }
 
 fn resolve_write_path(root: &Path, path: &str, message: &str) -> Result<PathBuf, String> {
@@ -1495,7 +1553,10 @@ mod tests {
             ..FileTreeConfig::default()
         };
 
-        assert!(looks_textual_with_config(Path::new("libcustom.rlib"), &config));
+        assert!(looks_textual_with_config(
+            Path::new("libcustom.rlib"),
+            &config
+        ));
         assert!(!looks_textual_with_config(Path::new("module.foo"), &config));
     }
 

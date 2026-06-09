@@ -501,7 +501,7 @@ fn collect_skill_dirs(agent: &str, dir: &Path, depth: usize, entries: &mut Vec<A
         let path = item.path();
         if path.is_dir() {
             collect_skill_dirs(agent, &path, depth - 1, entries);
-        } else if path.extension().map_or(false, |e| e == "md") {
+        } else if path.extension().is_some_and(|e| e == "md") {
             if let Some(entry) = skill_entry_from_flat_md(agent, &path) {
                 entries.push(entry);
             }
@@ -542,10 +542,12 @@ fn skill_entry_from_dir(agent: &str, dir: &Path) -> Option<AgentSlashEntry> {
 fn summarize_skill(body: &str) -> Option<String> {
     let mut lines = body.lines().peekable();
     /* skip YAML frontmatter block (--- ... ---) if present */
-    if lines.peek().map_or(false, |l| l.trim() == "---") {
+    if lines.peek().is_some_and(|l| l.trim() == "---") {
         lines.next();
         for line in &mut lines {
-            if line.trim() == "---" { break; }
+            if line.trim() == "---" {
+                break;
+            }
         }
     }
     for line in lines {

@@ -195,7 +195,12 @@ mod tests {
         });
 
         assert!(result.ok, "expected ok=true but got: {:?}", result);
-        assert_eq!(result.status, Some(200), "expected status=200 but got: {:?}", result);
+        assert_eq!(
+            result.status,
+            Some(200),
+            "expected status=200 but got: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -213,7 +218,12 @@ mod tests {
         });
 
         assert!(!result.ok, "expected ok=false but got: {:?}", result);
-        assert_eq!(result.status, Some(503), "expected status=503 but got: {:?}", result);
+        assert_eq!(
+            result.status,
+            Some(503),
+            "expected status=503 but got: {:?}",
+            result
+        );
         assert!(
             result.error.is_some(),
             "expected error to be Some but got: {:?}",
@@ -259,7 +269,10 @@ mod tests {
             }
             Err(e) => {
                 let error_str = e.to_string();
-                if e.is_timeout() || error_str.contains("timed out") || error_str.contains("timeout") {
+                if e.is_timeout()
+                    || error_str.contains("timed out")
+                    || error_str.contains("timeout")
+                {
                     ProbeResult {
                         ok: false,
                         status: None,
@@ -277,7 +290,11 @@ mod tests {
 
         assert!(!result.ok, "expected ok=false but got: {:?}", result);
         assert!(
-            result.error.as_deref().map(|e| e.contains("timeout")).unwrap_or(false),
+            result
+                .error
+                .as_deref()
+                .map(|e| e.contains("timeout"))
+                .unwrap_or(false),
             "expected error containing 'timeout' but got: {:?}",
             result
         );
@@ -290,12 +307,19 @@ mod tests {
             url: None,
             headers: None,
             command: Some("npx".to_string()),
-            args: Some(vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()]),
+            args: Some(vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+            ]),
         });
 
         assert!(!result.ok, "expected ok=false but got: {:?}", result);
         assert!(
-            result.error.as_deref().map(|e| e.contains("stdio")).unwrap_or(false),
+            result
+                .error
+                .as_deref()
+                .map(|e| e.contains("stdio"))
+                .unwrap_or(false),
             "expected error containing 'stdio' but got: {:?}",
             result
         );

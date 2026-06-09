@@ -70,6 +70,7 @@ type PolyporeDockviewWindow = Window & {
     focusOrAdd: (slot: string) => void;
     focusPanel: (id: string) => void;
     listPanels: () => Array<{ id: string; slot: string; title?: string }>;
+    getLayout: () => unknown;
   };
 };
 
@@ -432,6 +433,7 @@ export function PolyporeDockview({
     let clearFrame: number | null = null;
     let activePanelDisposable: { dispose: () => void } | null = null;
     let layoutChangeDisposable: { dispose: () => void } | null = null;
+    let exposedDockviewApi: PolyporeDockviewWindow['__polyporeDockview'];
     const stagedMountTimers = new Set<number>();
     const stagedMountFrames = new Set<number>();
     let saveTimer: number | null = null;
@@ -659,6 +661,9 @@ export function PolyporeDockview({
       window.removeEventListener('beforeunload', saveLayout);
       if (saveTimer !== null) { window.clearTimeout(saveTimer); saveTimer = null; }
       layoutChangeDisposable?.dispose();
+      if ((window as PolyporeDockviewWindow).__polyporeDockview === exposedDockviewApi) {
+        delete (window as PolyporeDockviewWindow).__polyporeDockview;
+      }
       if (apiRef.current === event.api) apiRef.current = null;
     };
 
@@ -759,7 +764,9 @@ export function PolyporeDockview({
             ? { referencePanel: referenceId, index: item.tabIndex }
             : position === 'left'
               ? undefined
-              : { referencePanel: firstByPos.get('left') ?? '', direction: 'right' },
+              : firstByPos.get('left')
+                ? { referencePanel: firstByPos.get('left')!, direction: 'right' }
+                : undefined,
         });
         if (!firstByPos.has(position)) firstByPos.set(position, id);
         if (position === 'center' && firstCenterId === null) firstCenterId = id;
@@ -787,7 +794,7 @@ export function PolyporeDockview({
        - addPanel(slot): always create a new instance (the + button path).
        - focusOrAdd(slot): focus an existing instance, create one if none
          exists (tool-card jumps from the chat iframe etc.). */
-    (window as PolyporeDockviewWindow).__polyporeDockview = {
+    exposedDockviewApi = {
       addPanel: (slot) => onAddPanel(slot),
       focusOrAdd: focusOrAddPanel,
       focusPanel: onFocusPanel,
@@ -796,7 +803,9 @@ export function PolyporeDockview({
         slot: typeof panel.params?.slot === 'string' ? panel.params.slot : '',
         title: typeof panel.api?.title === 'string' ? panel.api.title : undefined,
       })),
+      getLayout: () => event.api.toJSON(),
     };
+    (window as PolyporeDockviewWindow).__polyporeDockview = exposedDockviewApi;
   }, [initialLayout, ctx.pluginsBySlot, onAddPanel, focusOrAddPanel, onFocusPanel, handleWillShowOverlay, onReady, syncAgentPanels, layoutStorageKey]);
 
   useEffect(() => () => cleanupReadyRef.current?.(), []);

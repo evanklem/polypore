@@ -20,9 +20,9 @@ mod preview_native;
 mod project;
 mod project_context;
 mod pty;
-mod snapshotter;
 mod secret_broker;
 mod secrets;
+mod snapshotter;
 mod updater;
 mod webdriver;
 
@@ -38,9 +38,7 @@ fn main() {
     }
 
     tauri::Builder::default()
-        .setup(|_app| {
-            Ok(())
-        })
+        .setup(|_app| Ok(()))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("plugin", plugin_protocol::handle)
         .manage(mcp_super::McpSupervisor::default())

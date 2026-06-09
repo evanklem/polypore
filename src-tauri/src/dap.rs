@@ -288,7 +288,10 @@ impl DebugRegistry {
         Ok(StartOutput { session_id: id })
     }
 
-    pub fn set_breakpoints(&self, input: SetBreakpointsInput) -> Result<SetBreakpointsOutput, String> {
+    pub fn set_breakpoints(
+        &self,
+        input: SetBreakpointsInput,
+    ) -> Result<SetBreakpointsOutput, String> {
         let session = self.session(&input.session_id)?;
         let lines: Vec<Value> = input
             .breakpoints
@@ -323,7 +326,10 @@ impl DebugRegistry {
                 items
                     .iter()
                     .map(|item| VerifiedBreakpoint {
-                        verified: item.get("verified").and_then(|v| v.as_bool()).unwrap_or(false),
+                        verified: item
+                            .get("verified")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false),
                         line: item.get("line").and_then(|v| v.as_i64()),
                     })
                     .collect()
@@ -334,7 +340,10 @@ impl DebugRegistry {
 
     pub fn execute(&self, command: &str, input: StepInput) -> Result<StopOutput, String> {
         let session = self.session(&input.session_id)?;
-        let thread_id = input.thread_id.or_else(|| session.last_thread_id()).unwrap_or(1);
+        let thread_id = input
+            .thread_id
+            .or_else(|| session.last_thread_id())
+            .unwrap_or(1);
         session.drain_stops()?;
         let dap_command = match command {
             "continue" => "continue",
@@ -344,13 +353,20 @@ impl DebugRegistry {
             "pause" => "pause",
             other => return Err(format!("unknown execution command: {other}")),
         };
-        session.request(dap_command, json!({ "threadId": thread_id }), REQUEST_TIMEOUT)?;
+        session.request(
+            dap_command,
+            json!({ "threadId": thread_id }),
+            REQUEST_TIMEOUT,
+        )?;
         session.wait_for_stop(STOP_TIMEOUT)
     }
 
     pub fn stack_trace(&self, input: FrameInput) -> Result<Value, String> {
         let session = self.session(&input.session_id)?;
-        let thread_id = input.thread_id.or_else(|| session.last_thread_id()).unwrap_or(1);
+        let thread_id = input
+            .thread_id
+            .or_else(|| session.last_thread_id())
+            .unwrap_or(1);
         let response = session.request(
             "stackTrace",
             json!({ "threadId": thread_id, "startFrame": 0, "levels": 50 }),
@@ -380,7 +396,11 @@ impl DebugRegistry {
 
     pub fn scopes(&self, input: ScopesInput) -> Result<Value, String> {
         let session = self.session(&input.session_id)?;
-        let response = session.request("scopes", json!({ "frameId": input.frame_id }), REQUEST_TIMEOUT)?;
+        let response = session.request(
+            "scopes",
+            json!({ "frameId": input.frame_id }),
+            REQUEST_TIMEOUT,
+        )?;
         let scopes = response
             .get("body")
             .and_then(|body| body.get("scopes"))
@@ -458,7 +478,11 @@ impl DebugRegistry {
             .map_err(|_| "debug registry lock failed".to_string())?
             .remove(session_id);
         if let Some(session) = session {
-            let _ = session.request("disconnect", json!({ "terminateDebuggee": true }), Duration::from_secs(2));
+            let _ = session.request(
+                "disconnect",
+                json!({ "terminateDebuggee": true }),
+                Duration::from_secs(2),
+            );
             if let Ok(mut child) = session.child.lock() {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -470,11 +494,19 @@ impl DebugRegistry {
 
 impl DapSession {
     fn last_thread_id(&self) -> Option<i64> {
-        self.events.0.lock().ok().and_then(|state| state.last_thread_id)
+        self.events
+            .0
+            .lock()
+            .ok()
+            .and_then(|state| state.last_thread_id)
     }
 
     fn drain_stops(&self) -> Result<(), String> {
-        let mut state = self.events.0.lock().map_err(|_| "debug event lock failed".to_string())?;
+        let mut state = self
+            .events
+            .0
+            .lock()
+            .map_err(|_| "debug event lock failed".to_string())?;
         state.stops.clear();
         Ok(())
     }
@@ -487,7 +519,10 @@ impl DapSession {
             "command": command,
             "arguments": arguments,
         });
-        let mut stdin = self.stdin.lock().map_err(|_| "debug stdin lock failed".to_string())?;
+        let mut stdin = self
+            .stdin
+            .lock()
+            .map_err(|_| "debug stdin lock failed".to_string())?;
         write_dap_message(&mut stdin, &message)?;
         Ok(seq)
     }
@@ -509,7 +544,10 @@ impl DapSession {
             "arguments": arguments,
         });
         {
-            let mut stdin = self.stdin.lock().map_err(|_| "debug stdin lock failed".to_string())?;
+            let mut stdin = self
+                .stdin
+                .lock()
+                .map_err(|_| "debug stdin lock failed".to_string())?;
             write_dap_message(&mut stdin, &message)?;
         }
         match rx.recv_timeout(timeout) {
@@ -540,7 +578,9 @@ impl DapSession {
         // that haven't emitted `initialized` yet, so a single bounded wait is
         // enough and avoids hanging if the event never arrives.
         let (lock, cvar) = &*self.events;
-        let state = lock.lock().map_err(|_| "debug event lock failed".to_string())?;
+        let state = lock
+            .lock()
+            .map_err(|_| "debug event lock failed".to_string())?;
         if state.terminated {
             return Ok(());
         }
@@ -553,7 +593,9 @@ impl DapSession {
     fn wait_for_stop(&self, timeout: Duration) -> Result<StopOutput, String> {
         let (lock, cvar) = &*self.events;
         let deadline = Instant::now() + timeout;
-        let mut state = lock.lock().map_err(|_| "debug event lock failed".to_string())?;
+        let mut state = lock
+            .lock()
+            .map_err(|_| "debug event lock failed".to_string())?;
         loop {
             if let Some(stop) = state.stops.pop() {
                 return Ok(StopOutput {
@@ -562,7 +604,10 @@ impl DapSession {
                 });
             }
             if state.terminated {
-                return Ok(StopOutput { stop: None, terminated: true });
+                return Ok(StopOutput {
+                    stop: None,
+                    terminated: true,
+                });
             }
             let now = Instant::now();
             if now >= deadline {
@@ -576,7 +621,11 @@ impl DapSession {
     }
 
     fn console(&self, limit: usize) -> Result<Vec<ConsoleEntry>, String> {
-        let state = self.events.0.lock().map_err(|_| "debug event lock failed".to_string())?;
+        let state = self
+            .events
+            .0
+            .lock()
+            .map_err(|_| "debug event lock failed".to_string())?;
         let len = state.console.len();
         let start = len.saturating_sub(limit);
         Ok(state.console[start..].to_vec())
@@ -586,7 +635,11 @@ impl DapSession {
 fn parse_stop(event: &Value) -> Stop {
     let body = event.get("body").cloned().unwrap_or_else(|| json!({}));
     Stop {
-        reason: body.get("reason").and_then(|v| v.as_str()).unwrap_or("stopped").to_string(),
+        reason: body
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("stopped")
+            .to_string(),
         thread_id: body.get("threadId").and_then(|v| v.as_i64()),
         frame_id: None,
         file: None,
@@ -718,13 +771,16 @@ fn mark_terminated(events: &Arc<(Mutex<EventState>, Condvar)>) {
 }
 
 fn write_dap_message(stdin: &mut ChildStdin, message: &Value) -> Result<(), String> {
-    let bytes = serde_json::to_vec(message).map_err(|err| format!("failed to encode dap message: {err}"))?;
+    let bytes = serde_json::to_vec(message)
+        .map_err(|err| format!("failed to encode dap message: {err}"))?;
     write!(stdin, "Content-Length: {}\r\n\r\n", bytes.len())
         .map_err(|err| format!("failed to write dap header: {err}"))?;
     stdin
         .write_all(&bytes)
         .map_err(|err| format!("failed to write dap body: {err}"))?;
-    stdin.flush().map_err(|err| format!("failed to flush dap message: {err}"))
+    stdin
+        .flush()
+        .map_err(|err| format!("failed to flush dap message: {err}"))
 }
 
 fn launch_request_kind(config: &Value) -> &'static str {
@@ -786,7 +842,12 @@ fn adapter_command(adapter: &str, config: &Value) -> Result<(String, Vec<String>
         let args = config
             .get("adapterArgs")
             .and_then(|v| v.as_array())
-            .map(|items| items.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default();
         return Ok((command.to_string(), args));
     }
@@ -835,7 +896,10 @@ pub fn debug_adapter_probe(input: AdapterProbeInput) -> AdapterProbeOutput {
 }
 
 #[tauri::command]
-pub fn debug_start(registry: tauri::State<'_, DebugRegistry>, input: StartInput) -> Result<StartOutput, String> {
+pub fn debug_start(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StartInput,
+) -> Result<StartOutput, String> {
     registry.start(input)
 }
 
@@ -848,47 +912,74 @@ pub fn debug_set_breakpoints(
 }
 
 #[tauri::command]
-pub fn debug_continue(registry: tauri::State<'_, DebugRegistry>, input: StepInput) -> Result<StopOutput, String> {
+pub fn debug_continue(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StepInput,
+) -> Result<StopOutput, String> {
     registry.execute("continue", input)
 }
 
 #[tauri::command]
-pub fn debug_step_over(registry: tauri::State<'_, DebugRegistry>, input: StepInput) -> Result<StopOutput, String> {
+pub fn debug_step_over(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StepInput,
+) -> Result<StopOutput, String> {
     registry.execute("stepOver", input)
 }
 
 #[tauri::command]
-pub fn debug_step_in(registry: tauri::State<'_, DebugRegistry>, input: StepInput) -> Result<StopOutput, String> {
+pub fn debug_step_in(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StepInput,
+) -> Result<StopOutput, String> {
     registry.execute("stepIn", input)
 }
 
 #[tauri::command]
-pub fn debug_step_out(registry: tauri::State<'_, DebugRegistry>, input: StepInput) -> Result<StopOutput, String> {
+pub fn debug_step_out(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StepInput,
+) -> Result<StopOutput, String> {
     registry.execute("stepOut", input)
 }
 
 #[tauri::command]
-pub fn debug_pause(registry: tauri::State<'_, DebugRegistry>, input: StepInput) -> Result<StopOutput, String> {
+pub fn debug_pause(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: StepInput,
+) -> Result<StopOutput, String> {
     registry.execute("pause", input)
 }
 
 #[tauri::command]
-pub fn debug_stack_trace(registry: tauri::State<'_, DebugRegistry>, input: FrameInput) -> Result<Value, String> {
+pub fn debug_stack_trace(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: FrameInput,
+) -> Result<Value, String> {
     registry.stack_trace(input)
 }
 
 #[tauri::command]
-pub fn debug_scopes(registry: tauri::State<'_, DebugRegistry>, input: ScopesInput) -> Result<Value, String> {
+pub fn debug_scopes(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: ScopesInput,
+) -> Result<Value, String> {
     registry.scopes(input)
 }
 
 #[tauri::command]
-pub fn debug_variables(registry: tauri::State<'_, DebugRegistry>, input: VariablesInput) -> Result<Value, String> {
+pub fn debug_variables(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: VariablesInput,
+) -> Result<Value, String> {
     registry.variables(input)
 }
 
 #[tauri::command]
-pub fn debug_evaluate(registry: tauri::State<'_, DebugRegistry>, input: EvaluateInput) -> Result<Value, String> {
+pub fn debug_evaluate(
+    registry: tauri::State<'_, DebugRegistry>,
+    input: EvaluateInput,
+) -> Result<Value, String> {
     registry.evaluate(input)
 }
 
@@ -901,7 +992,10 @@ pub fn debug_console(
 }
 
 #[tauri::command]
-pub fn debug_stop(registry: tauri::State<'_, DebugRegistry>, session_id: String) -> Result<(), String> {
+pub fn debug_stop(
+    registry: tauri::State<'_, DebugRegistry>,
+    session_id: String,
+) -> Result<(), String> {
     registry.stop(&session_id)
 }
 
@@ -943,7 +1037,11 @@ mod tests {
         use std::io::Cursor;
         let message = json!({ "seq": 1, "type": "request", "command": "initialize" });
         let bytes = serde_json::to_vec(&message).unwrap();
-        let framed = format!("Content-Length: {}\r\n\r\n{}", bytes.len(), String::from_utf8(bytes).unwrap());
+        let framed = format!(
+            "Content-Length: {}\r\n\r\n{}",
+            bytes.len(),
+            String::from_utf8(bytes).unwrap()
+        );
 
         let pending: Arc<Mutex<HashMap<i64, Sender<Value>>>> = Arc::new(Mutex::new(HashMap::new()));
         let events = Arc::new((Mutex::new(EventState::default()), Condvar::new()));
@@ -958,9 +1056,16 @@ mod tests {
             String::from_utf8(response_bytes).unwrap()
         );
 
-        read_dap_messages(Cursor::new(framed_response.into_bytes()), pending.clone(), events.clone());
+        read_dap_messages(
+            Cursor::new(framed_response.into_bytes()),
+            pending.clone(),
+            events.clone(),
+        );
         let received = rx.recv_timeout(Duration::from_millis(200)).unwrap();
-        assert_eq!(received.get("request_seq").and_then(|v| v.as_i64()), Some(7));
+        assert_eq!(
+            received.get("request_seq").and_then(|v| v.as_i64()),
+            Some(7)
+        );
         // header parsing must accept the canonical framing in `framed`.
         assert!(framed.starts_with("Content-Length:"));
     }

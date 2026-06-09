@@ -1117,6 +1117,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
                 ref={plusBtnRef}
                 className={`nav-section__action${plusPopupOpen ? ' nav-section__action--open' : ''}`}
                 title="new entry"
+                aria-label="new entry"
                 aria-expanded={plusPopupOpen}
                 onClick={(e) => {
                   const nextOpen = !plusPopupOpen;
@@ -1374,7 +1375,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
               <svg className="plus-dropdown__icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2h3.879a1.5 1.5 0 0 1 1.06.44l.532.531A1.5 1.5 0 0 0 9.032 3H13.5A1.5 1.5 0 0 1 15 4.5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 1 12.5v-9Z" />
               </svg>
-              New Folder
+              new folder
             </button>
             <button
               type="button"
@@ -1390,7 +1391,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
               <svg className="plus-dropdown__icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                 <path d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2zm5.5 1.5v2a1 1 0 0 0 1 1h2l-3-3z" />
               </svg>
-              New File
+              new file
             </button>
           </div>,
           document.body,

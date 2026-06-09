@@ -518,6 +518,7 @@ input {
 }
 
 .topbar-menu__item:hover,
+.workspace-preset-menu__user-row:hover > .topbar-menu__item,
 .topbar-menu__item--active {
   border-color: var(--accent-24);
   background: var(--accent-10);
@@ -549,10 +550,77 @@ input {
   font-size: 12px;
 }
 
-.workspace-preset-menu__section--actions button:hover {
+.workspace-preset-menu__section--actions button:hover:not(:disabled) {
   border-color: var(--accent-22);
   background: var(--accent-08);
   color: var(--ink);
+}
+
+.workspace-preset-menu__section--actions button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.workspace-preset-menu__section--user {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--accent-14);
+}
+
+.workspace-preset-menu__user-row {
+  position: relative;
+}
+
+.workspace-preset-menu__user-row > .topbar-menu__item {
+  width: 100%;
+  padding-right: 36px;
+}
+
+.topbar-menu__item-delete {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.1s;
+}
+
+.workspace-preset-menu__user-row:hover .topbar-menu__item-delete {
+  opacity: 1;
+}
+
+.topbar-menu__item-delete:focus-visible {
+  opacity: 1;
+}
+
+.topbar-menu__item-delete:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+}
+
+@media (hover: none) {
+  .topbar-menu__item-delete {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 520px) {
+  .topbar-menu--workspace {
+    position: fixed;
+    top: 38px;
+    right: 8px;
+    left: 8px;
+    min-width: 0;
+  }
 }
 
 .workspace-preset-menu__notice {
@@ -562,6 +630,26 @@ input {
   background: var(--accent-08);
   color: var(--muted);
   font-size: 11px;
+}
+
+.workspace-preset-dialog__error {
+  color: var(--danger) !important;
+}
+
+.workspace-preset-dialog .host-confirm-overlay__actions button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.workspace-preset-dialog .host-confirm-overlay__actions .workspace-preset-dialog__delete {
+  border-color: rgba(var(--c-danger-rgb), 0.4);
+  background: rgba(var(--c-danger-rgb), 0.1);
+  color: var(--danger);
+}
+
+.workspace-preset-dialog .host-confirm-overlay__actions .workspace-preset-dialog__delete:hover {
+  border-color: rgba(var(--c-danger-rgb), 0.58);
+  background: rgba(var(--c-danger-rgb), 0.16);
 }
 
 .topbar-menu--git {

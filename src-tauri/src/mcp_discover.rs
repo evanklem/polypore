@@ -180,7 +180,9 @@ fn claude_entry(name: String, entry: ClaudeMcpEntry) -> DiscoveredMcp {
 fn classify_transport(url: Option<&str>, command: Option<&str>, declared: Option<&str>) -> String {
     match declared.map(|value| value.to_ascii_lowercase()) {
         Some(value) if value == "sse" => "sse".to_string(),
-        Some(value) if value == "http" || value == "streamable_http" || value == "streamable-http" => {
+        Some(value)
+            if value == "http" || value == "streamable_http" || value == "streamable-http" =>
+        {
             "http".to_string()
         }
         Some(value) if value == "stdio" => "stdio".to_string(),
@@ -192,11 +194,7 @@ fn classify_transport(url: Option<&str>, command: Option<&str>, declared: Option
 
 // ── Install helpers ───────────────────────────────────────────────────────────
 
-fn write_json_mcp_entry(
-    path: &Path,
-    name: &str,
-    entry: &serde_json::Value,
-) -> Result<(), String> {
+fn write_json_mcp_entry(path: &Path, name: &str, entry: &serde_json::Value) -> Result<(), String> {
     let mut config: serde_json::Value = if path.exists() {
         std::fs::read_to_string(path)
             .ok()
@@ -233,14 +231,23 @@ fn write_toml_mcp_entry(
         std::fs::read_to_string(path)
             .ok()
             .and_then(|s| toml::from_str::<toml::Value>(&s).ok())
-            .and_then(|v| if let toml::Value::Table(t) = v { Some(t) } else { None })
+            .and_then(|v| {
+                if let toml::Value::Table(t) = v {
+                    Some(t)
+                } else {
+                    None
+                }
+            })
             .unwrap_or_default()
     } else {
         toml::map::Map::new()
     };
 
     let mut entry = toml::map::Map::new();
-    entry.insert("transport".to_string(), toml::Value::String(transport.to_string()));
+    entry.insert(
+        "transport".to_string(),
+        toml::Value::String(transport.to_string()),
+    );
     if let Some(c) = command {
         entry.insert("command".to_string(), toml::Value::String(c.clone()));
     }
@@ -280,6 +287,7 @@ fn write_toml_mcp_entry(
 /// Install an MCP server into agent config files (.mcp.json / ~/.claude.json /
 /// ~/.codex/config.toml) based on which agents are selected.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn mcp_config_install(
     name: String,
     transport: String,
@@ -292,14 +300,21 @@ pub fn mcp_config_install(
     project_dir: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let mut entry_map = serde_json::Map::new();
-    entry_map.insert("type".to_string(), serde_json::Value::String(transport.clone()));
+    entry_map.insert(
+        "type".to_string(),
+        serde_json::Value::String(transport.clone()),
+    );
     if let Some(ref c) = command {
         entry_map.insert("command".to_string(), serde_json::Value::String(c.clone()));
     }
     if let Some(ref a) = args {
         entry_map.insert(
             "args".to_string(),
-            serde_json::Value::Array(a.iter().map(|s| serde_json::Value::String(s.clone())).collect()),
+            serde_json::Value::Array(
+                a.iter()
+                    .map(|s| serde_json::Value::String(s.clone()))
+                    .collect(),
+            ),
         );
     }
     if let Some(ref e) = env {
@@ -347,7 +362,9 @@ pub fn mcp_config_install(
             "codex" => {
                 if let Some(ref home) = home {
                     let path = home.join(".codex").join("config.toml");
-                    match write_toml_mcp_entry(&path, &name, &transport, &command, &args, &env, &url) {
+                    match write_toml_mcp_entry(
+                        &path, &name, &transport, &command, &args, &env, &url,
+                    ) {
                         Ok(()) => targets.push("codex".to_string()),
                         Err(e) => eprintln!("mcp_config_install .codex/config.toml: {e}"),
                     }
@@ -413,11 +430,17 @@ mod tests {
             );
         }
 
-        let fs_entry = result.iter().find(|e| e.name == "filesystem").expect("filesystem entry");
+        let fs_entry = result
+            .iter()
+            .find(|e| e.name == "filesystem")
+            .expect("filesystem entry");
         assert_eq!(fs_entry.transport, "stdio");
         assert_eq!(fs_entry.command.as_deref(), Some("npx"));
 
-        let http_entry = result.iter().find(|e| e.name == "my-http-server").expect("http entry");
+        let http_entry = result
+            .iter()
+            .find(|e| e.name == "my-http-server")
+            .expect("http entry");
         assert_eq!(http_entry.transport, "http");
         assert_eq!(http_entry.url.as_deref(), Some("http://localhost:3000/mcp"));
     }
@@ -445,7 +468,12 @@ mod tests {
 
         let result = discover(dir.path()).expect("discover should not error");
 
-        assert_eq!(result.len(), 1, "expected project-scoped MCP result, got {:?}", result);
+        assert_eq!(
+            result.len(),
+            1,
+            "expected project-scoped MCP result, got {:?}",
+            result
+        );
         let entry = &result[0];
         assert_eq!(entry.name, "playwright");
         assert_eq!(entry.origins, vec!["claude".to_string()]);
@@ -479,7 +507,12 @@ args = ["-y", "@modelcontextprotocol/server-github"]
         assert_eq!(entry.command.as_deref(), Some("npx"));
         assert_eq!(
             entry.args.as_deref(),
-            Some(&["-y".to_string(), "@modelcontextprotocol/server-github".to_string()][..])
+            Some(
+                &[
+                    "-y".to_string(),
+                    "@modelcontextprotocol/server-github".to_string()
+                ][..]
+            )
         );
     }
 
@@ -541,7 +574,11 @@ transport = "sse"
         let dir = TempDir::new().expect("tempdir");
         // neither .claude.json nor .codex/config.toml exist in this dir
         let result = discover(dir.path()).expect("should not error on missing files");
-        assert!(result.is_empty(), "expected empty result for missing files, got {:?}", result);
+        assert!(
+            result.is_empty(),
+            "expected empty result for missing files, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -551,6 +588,10 @@ transport = "sse"
         fs::write(&claude_json, b"{ this is not valid json !!").expect("write bad fixture");
 
         let result = discover(dir.path()).expect("should not error, just log warning");
-        assert!(result.is_empty(), "expected empty result for malformed JSON, got {:?}", result);
+        assert!(
+            result.is_empty(),
+            "expected empty result for malformed JSON, got {:?}",
+            result
+        );
     }
 }

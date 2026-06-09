@@ -403,10 +403,15 @@ fn package_uses_typescript(root: &Path) -> bool {
         Some(value) => value,
         None => return false,
     };
-    ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]
-        .iter()
-        .filter_map(|key| package.get(*key).and_then(|value| value.as_object()))
-        .any(|deps| deps.contains_key("typescript"))
+    [
+        "dependencies",
+        "devDependencies",
+        "peerDependencies",
+        "optionalDependencies",
+    ]
+    .iter()
+    .filter_map(|key| package.get(*key).and_then(|value| value.as_object()))
+    .any(|deps| deps.contains_key("typescript"))
 }
 
 /* read project-declared diagnostics sources from `.polypore/diagnostics.json`.
@@ -1039,7 +1044,14 @@ fn inspect_project_files(root: &Path) -> SourceRun {
         let relative = relative_path(root, file);
         inspect_conflict_markers(&relative, &text, &mut diagnostics);
         if is_module_source_file(file) {
-            inspect_local_module_references(root, file, &relative, &text, &aliases, &mut diagnostics);
+            inspect_local_module_references(
+                root,
+                file,
+                &relative,
+                &text,
+                &aliases,
+                &mut diagnostics,
+            );
         }
     }
 
@@ -1209,11 +1221,7 @@ impl TsConfigAliases {
     }
 
     fn resolve(&self, specifier: &str, root: &Path) -> Option<Vec<PathBuf>> {
-        let base = self
-            .base_dir
-            .as_deref()
-            .unwrap_or(root)
-            .to_path_buf();
+        let base = self.base_dir.as_deref().unwrap_or(root).to_path_buf();
         let base_url_dir = self
             .base_url
             .as_deref()
@@ -2198,7 +2206,10 @@ fn parse_generic_colon_line(index: usize, line: &str, source: &str) -> Option<Di
     }
     let line_no = parts[1].trim().parse::<i64>().ok()?;
     let (col, message) = if parts.len() >= 4 {
-        (parts[2].trim().parse::<i64>().ok().unwrap_or(1), parts[3].trim())
+        (
+            parts[2].trim().parse::<i64>().ok().unwrap_or(1),
+            parts[3].trim(),
+        )
     } else {
         (1, parts[2].trim())
     };
@@ -2264,7 +2275,9 @@ fn parse_jvm_bracket_line(index: usize, line: &str, source: &str) -> Option<Diag
 
 fn parse_kotlin_compiler_line(index: usize, line: &str, source: &str) -> Option<Diagnostic> {
     let trimmed = strip_log_prefix(line.trim());
-    let body = trimmed.strip_prefix("e: ").or_else(|| trimmed.strip_prefix("w: "))?;
+    let body = trimmed
+        .strip_prefix("e: ")
+        .or_else(|| trimmed.strip_prefix("w: "))?;
     let body = body.strip_prefix("file://").unwrap_or(body);
     let open = body.rfind(": (")?;
     let file = body[..open].trim();
@@ -2386,7 +2399,10 @@ fn parse_dart_analyze_line(index: usize, line: &str, source: &str) -> Option<Dia
     if file.is_empty() || file.contains(" ") {
         return None;
     }
-    let code = parts.get(3).map(|value| value.trim().to_string()).filter(|value| !value.is_empty());
+    let code = parts
+        .get(3)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     Some(Diagnostic {
         id: format!("{source}-{index}"),
         severity,
@@ -2716,10 +2732,7 @@ mod tests {
         assert!(deep.contains(&"mylang".to_string()));
         assert!(deep.contains(&"slow-audit".to_string()));
         // not duplicated across the two phases.
-        assert_eq!(
-            deep.iter().filter(|id| id.as_str() == "mylang").count(),
-            1
-        );
+        assert_eq!(deep.iter().filter(|id| id.as_str() == "mylang").count(), 1);
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -2813,7 +2826,11 @@ mod tests {
         std::fs::write(dir.join("mix.exs"), "defmodule App.MixProject do end").unwrap();
         std::fs::write(dir.join("composer.json"), "{}").unwrap();
         std::fs::write(dir.join("Package.swift"), "// swift-tools-version: 5.10").unwrap();
-        std::fs::write(dir.join("pubspec.yaml"), "dependencies:\n  flutter:\n    sdk: flutter\n").unwrap();
+        std::fs::write(
+            dir.join("pubspec.yaml"),
+            "dependencies:\n  flutter:\n    sdk: flutter\n",
+        )
+        .unwrap();
 
         let sources = auto_detect_deep_sources(&dir);
 
@@ -2827,7 +2844,10 @@ mod tests {
             "swift-build",
             "flutter-analyze",
         ] {
-            assert!(sources.contains(&expected.to_string()), "missing {expected}");
+            assert!(
+                sources.contains(&expected.to_string()),
+                "missing {expected}"
+            );
         }
         assert!(!sources.contains(&"dart-analyze".to_string()));
         std::fs::remove_dir_all(&dir).ok();
@@ -2835,7 +2855,8 @@ mod tests {
 
     #[test]
     fn generic_colon_parser_accepts_optional_column() {
-        let diags = parse_generic_colon_diagnostics("lib/app.ex:12: undefined function run/0", "mix");
+        let diags =
+            parse_generic_colon_diagnostics("lib/app.ex:12: undefined function run/0", "mix");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].file, "lib/app.ex");
         assert_eq!(diags[0].range.start.line, 11);
@@ -2858,7 +2879,8 @@ e: file://src/main/kotlin/App.kt: (4, 9): Unresolved reference: missing\n";
 
     #[test]
     fn parses_msbuild_output() {
-        let output = "Program.cs(12,18): error CS0103: The name 'x' does not exist in the current context";
+        let output =
+            "Program.cs(12,18): error CS0103: The name 'x' does not exist in the current context";
         let diags = parse_msbuild_diagnostics(output, "dotnet-build");
         assert_eq!(diags.len(), 1);
         assert_eq!(diags[0].file, "Program.cs");
@@ -3061,7 +3083,10 @@ e: file://src/main/kotlin/App.kt: (4, 9): Unresolved reference: missing\n";
 
     #[test]
     fn css_import_paths_extracts_bare_string_form() {
-        assert_eq!(css_import_paths("@import \"./base.css\";"), vec!["./base.css"]);
+        assert_eq!(
+            css_import_paths("@import \"./base.css\";"),
+            vec!["./base.css"]
+        );
         assert_eq!(
             css_import_paths("@import 'layer.css' layer(reset);"),
             vec!["layer.css"]
@@ -3148,8 +3173,7 @@ e: file://src/main/kotlin/App.kt: (4, 9): Unresolved reference: missing\n";
         std::fs::create_dir_all(dir.join("node_modules/pkg")).unwrap();
         std::fs::create_dir_all(dir.join("dist")).unwrap();
         std::fs::create_dir_all(dir.join("secret")).unwrap();
-        std::fs::create_dir_all(dir.join(".claude/worktrees/agent-a39821ffefee81420/src"))
-            .unwrap();
+        std::fs::create_dir_all(dir.join(".claude/worktrees/agent-a39821ffefee81420/src")).unwrap();
         std::fs::create_dir_all(dir.join(".claude/orchestration")).unwrap();
         std::fs::write(dir.join("src/keep.ts"), "export {};\n").unwrap();
         std::fs::write(
@@ -3164,11 +3188,7 @@ e: file://src/main/kotlin/App.kt: (4, 9): Unresolved reference: missing\n";
             "export {};\n",
         )
         .unwrap();
-        std::fs::write(
-            dir.join(".claude/orchestration/keep.md"),
-            "# keep\n",
-        )
-        .unwrap();
+        std::fs::write(dir.join(".claude/orchestration/keep.md"), "# keep\n").unwrap();
         std::fs::write(dir.join(".gitignore"), "secret/\n").unwrap();
 
         let files = project_files(&dir, 200);
