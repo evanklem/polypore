@@ -49,7 +49,7 @@ impl AgentRuntime for AcpRuntime {
         text: &str,
         event_sink: &mut AgentEventSink<'_>,
     ) -> Result<AgentSendResult, String> {
-        let mut child = Command::new(&self.agent)
+        let mut child = Command::new(super::resolve_command(&self.agent))
             .current_dir(cwd)
             .arg("--acp")
             .stdin(Stdio::piped())
@@ -128,7 +128,7 @@ impl AgentRuntime for AcpRuntime {
     }
 
     fn interrupt(&self, session_id: &str) -> Result<AgentControlResult, String> {
-        let mut child = match Command::new(&self.agent)
+        let mut child = match Command::new(super::resolve_command(&self.agent))
             .arg("--acp")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

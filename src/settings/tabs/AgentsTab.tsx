@@ -47,7 +47,6 @@ export function AgentsTab({ services, setNotice }: AgentsTabProps) {
 
   const fallbackRows = useMemo(() =>
     Object.keys(agentMeta)
-      .filter((agent) => agent !== 'cursor')
       .map<AgentBinaryStatus>((agent) => ({ agent, available: false, path: null })),
   [agentMeta]);
 

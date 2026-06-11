@@ -10,6 +10,7 @@ use tauri::Emitter;
 use crate::project_context;
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PtySession {
     pub id: String,
     pub command: String,
@@ -241,9 +242,13 @@ pub fn pty_resize(
 - empty command → spawn an interactive login shell so the user gets a
   real $SHELL session and can type any command they want (claude, vim,
   htop, …) just like a system terminal.
-- non-empty command → wrap with `sh -lc <cmd>` so one-shot launches
-  ("git status", "npm run dev") still work; the spawned process gets a
-  real pty regardless, so its ansi output renders correctly. */
+- non-empty command → wrap with `$SHELL -i -l -c <cmd>` so one-shot
+  launches ("git status", "npm run dev", "codex") still work; the
+  spawned process gets a real pty regardless, so its ansi output renders
+  correctly. interactive + login matters: agent CLIs commonly live in
+  dirs (~/.local/bin, npm globals, version-manager shims) that only the
+  user's rc files put on PATH — a bare `sh -lc` skips those and the
+  panel dies with "codex: command not found". */
 fn launcher(command: &str) -> (String, Vec<String>) {
     if cfg!(target_os = "windows") {
         if command.trim().is_empty() {
@@ -254,15 +259,20 @@ fn launcher(command: &str) -> (String, Vec<String>) {
             vec!["/C".to_string(), command.to_string()],
         );
     }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string());
     if command.trim().is_empty() {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "bash".to_string());
         /* -l so the shell sources the user's login profile and the user
         sees their familiar prompt + aliases. */
         return (shell, vec!["-l".to_string()]);
     }
     (
-        "sh".to_string(),
-        vec!["-lc".to_string(), command.to_string()],
+        shell,
+        vec![
+            "-i".to_string(),
+            "-l".to_string(),
+            "-c".to_string(),
+            command.to_string(),
+        ],
     )
 }
 

@@ -36,6 +36,7 @@ pub struct AgentSlashEntry {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentCapabilityMap {
     pub streaming: bool,
     pub tool_use: bool,
@@ -49,7 +50,11 @@ pub struct AgentCapabilityMap {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
 pub enum AgentEvent {
     Message { text: String },
     ToolCall { tool_name: String, summary: String },
@@ -57,6 +62,7 @@ pub enum AgentEvent {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSendResult {
     pub agent: String,
     pub adapter: String,
@@ -66,6 +72,7 @@ pub struct AgentSendResult {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentControlResult {
     pub agent: String,
     pub adapter: String,
@@ -209,7 +216,7 @@ pub trait AgentRuntime {
 }
 
 pub fn probe_acp(command: &str) -> bool {
-    let mut child = match Command::new(command)
+    let mut child = match Command::new(resolve_command(command))
         .arg("--acp")
         .arg("--help")
         .stdout(Stdio::piped())
@@ -235,8 +242,48 @@ pub fn probe_acp(command: &str) -> bool {
     }
 }
 
+/* Resolve an agent CLI to an absolute path using the user's interactive
+login shell. The desktop process inherits a GUI (or bare login) PATH that
+often misses ~/.local/bin, npm-global bins, and version-manager shims —
+exactly where claude/codex get installed — so a bare Command::new("codex")
+fails even though the user's terminal finds it fine. Cached per name. */
+static RESOLVED_COMMANDS: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn resolve_command(name: &str) -> String {
+    if cfg!(target_os = "windows") || name.contains('/') {
+        return name.to_string();
+    }
+    if let Ok(cache) = RESOLVED_COMMANDS.lock() {
+        if let Some(path) = cache.get(name) {
+            return path.clone();
+        }
+    }
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
+    let resolved = Command::new(&shell)
+        .arg("-ilc")
+        .arg(format!("command -v {name}"))
+        .stdin(Stdio::null())
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if path.starts_with('/') {
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| name.to_string());
+    if let Ok(mut cache) = RESOLVED_COMMANDS.lock() {
+        cache.insert(name.to_string(), resolved.clone());
+    }
+    resolved
+}
+
 pub fn command_available(command: &str) -> bool {
-    Command::new(command)
+    Command::new(resolve_command(command))
         .arg("--version")
         .output()
         .map(|output| output.status.success())

@@ -6,8 +6,8 @@ use serde_json::Value;
 
 use super::{
     codex_capabilities, command_available, interrupt_agent_child, register_agent_child,
-    scrub_agent_env, wait_agent_child, AgentControlResult, AgentEvent, AgentEventSink,
-    AgentRuntime, AgentRuntimeStatus, AgentSendResult,
+    resolve_command, scrub_agent_env, wait_agent_child, AgentControlResult, AgentEvent,
+    AgentEventSink, AgentRuntime, AgentRuntimeStatus, AgentSendResult,
 };
 
 pub struct CodexStdioRuntime;
@@ -29,7 +29,7 @@ impl AgentRuntime for CodexStdioRuntime {
         text: &str,
         event_sink: &mut AgentEventSink<'_>,
     ) -> Result<AgentSendResult, String> {
-        let mut command = Command::new("codex");
+        let mut command = Command::new(resolve_command("codex"));
         command
             .arg("--ask-for-approval")
             .arg("on-request")
