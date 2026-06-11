@@ -16,6 +16,7 @@ import type { PolyporeHost } from '../packages/sdk/src/host';
 import type { HostRpcServer, PluginLoader } from '../packages/host/src';
 import type { WorkspaceLayoutItem } from './core/types';
 import { pluginPrefetch, perfPoint } from '../plugins/shared';
+import { clearDockviewApi, setDockviewApi, type DockviewGlobalApi } from './core/polypore-window';
 
 const tauriCore = () => (window as Window & { __TAURI__?: { core?: { invoke?: (cmd: string, args?: unknown) => Promise<unknown> } } }).__TAURI__?.core;
 const tauriEvent = () => (window as Window & { __TAURI__?: { event?: { listen?: (event: string, cb: (msg: { payload: unknown }) => void) => Promise<() => void> } } }).__TAURI__?.event;
@@ -24,17 +25,6 @@ const tauriEvent = () => (window as Window & { __TAURI__?: { event?: { listen?: 
    editor, preview, …) is a dockview panel — drag, dock, tab, split and
    close all work uniformly. there is no special "chat region"; chat is
    just another plugin that happens to render via iframe. */
-
-type PolyporeDockviewProps = {
-  contextItems: string[];
-  contextByChat: Record<string, string[]>;
-  contextDocsByChat: Record<string, PanelContextDoc[]>;
-  onAddContext: (label: string, targetId?: string) => void;
-  onRemoveContext: (label: string, targetId?: string) => void;
-  onOpenHelp: (slot: string) => void;
-  onOpenSettings: (slot: string) => void;
-  onAdd: (slot: string) => void;
-};
 
 type PluginPanelContext = {
   pluginsBySlot: Map<string, BuiltinPlugin>;
@@ -64,16 +54,6 @@ function isAgentChatSlot(ctx: PluginPanelContext, slot: string): boolean {
   return ctx.pluginsBySlot.get(slot)?.manifest.category === 'agent';
 }
 
-type PolyporeDockviewWindow = Window & {
-  __polyporeDockview?: {
-    addPanel: (slot: string) => void;
-    focusOrAdd: (slot: string) => void;
-    focusPanel: (id: string) => void;
-    listPanels: () => Array<{ id: string; slot: string; title?: string }>;
-    getLayout: () => unknown;
-  };
-};
-
 const PluginPanelContextProvider = createContext<PluginPanelContext | null>(null);
 
 export function usePluginPanelContext() {
@@ -84,6 +64,16 @@ export function usePluginPanelContext() {
 
 type PluginPanelParams = { slot: string; displayTitle?: string };
 
+/* panel ids must be unique against both this session's panels and ids
+   restored from a saved layout. wall-clock alone collides when two panels
+   are added in the same millisecond; a counter alone collides with restored
+   ids after a reload. the pair is unique on both axes. */
+let panelIdSeq = 0;
+function nextPanelId(slot: string): string {
+  panelIdSeq += 1;
+  return `${slot}-${Date.now().toString(36)}-${panelIdSeq}`;
+}
+
 function isPluginEnabled(ctx: PluginPanelContext, plugin: BuiltinPlugin | undefined): boolean {
   if (!plugin) return false;
   const installed = ctx.installedPlugins.find((item) => item.id === plugin.manifest.id);
@@ -91,9 +81,12 @@ function isPluginEnabled(ctx: PluginPanelContext, plugin: BuiltinPlugin | undefi
 }
 
 /* custom tab renderer — exposes proper role="tab" + aria-label so the
-   tab strip is queryable both by accessibility tooling and by tests. */
+   tab strip is queryable both by accessibility tooling and by tests, and
+   is keyboard-operable: Enter/Space activates, arrows/Home/End move focus
+   along the strip, Delete closes. */
 function PolyporeTab(props: IDockviewPanelHeaderProps<PluginPanelParams>) {
   const ctx = usePluginPanelContext();
+  const tabRef = useRef<HTMLDivElement | null>(null);
   const slot = props.params.slot;
   const plugin = ctx.pluginsBySlot.get(slot);
   const icon = plugin?.meta.icon ?? '';
@@ -105,27 +98,78 @@ function PolyporeTab(props: IDockviewPanelHeaderProps<PluginPanelParams>) {
     setActive(props.api.isActive);
     return () => disposable.dispose();
   }, [props.api]);
-  const onClick = () => {
+  /* dockview owns the tab rail element, so a tab without a tablist would be
+     incomplete ARIA — patch the role onto the surrounding rail on mount. */
+  useEffect(() => {
+    const rail = tabRef.current?.closest('.dv-tabs-container');
+    if (rail instanceof HTMLElement && !rail.getAttribute('role')) {
+      rail.setAttribute('role', 'tablist');
+    }
+  }, []);
+  const activate = () => {
     if (!props.api.isActive) {
       perfPoint(`tab-click:${slot}`);
       props.api.setActive();
     }
   };
-  const onClose = (event: React.MouseEvent) => {
-    event.stopPropagation();
+  const close = () => {
     if (isAgentChatSlot(ctx, slot)) {
-      ctx.hostServer.setState('closedAgentPanel', String(props.api.id ?? ''));
+      /* a close is a one-shot notification, so it rides the pub/sub bus on
+         the standard panel:closed topic rather than being crammed into a
+         state key that would keep the last-closed id around forever. */
+      ctx.hostServer.publish('panel:closed', { instanceId: String(props.api.id ?? '') });
     }
     props.api.close();
   };
+  const onClose = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    close();
+  };
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    const rail = tabRef.current?.closest('.dv-tabs-container');
+    const tabs = rail ? [...rail.querySelectorAll<HTMLElement>('.polypore-tab')] : [];
+    const index = tabRef.current ? tabs.indexOf(tabRef.current) : -1;
+    switch (event.key) {
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        activate();
+        break;
+      case 'ArrowLeft':
+        event.preventDefault();
+        tabs[(index - 1 + tabs.length) % tabs.length]?.focus();
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        tabs[(index + 1) % tabs.length]?.focus();
+        break;
+      case 'Home':
+        event.preventDefault();
+        tabs[0]?.focus();
+        break;
+      case 'End':
+        event.preventDefault();
+        tabs[tabs.length - 1]?.focus();
+        break;
+      case 'Delete':
+        event.preventDefault();
+        close();
+        break;
+      default:
+        break;
+    }
+  };
   return (
     <div
+      ref={tabRef}
       role="tab"
       aria-selected={active}
       aria-label={label}
       className="polypore-tab"
       data-slot={slot}
-      onClick={onClick}
+      tabIndex={active ? 0 : -1}
+      onClick={activate}
+      onKeyDown={onKeyDown}
     >
       {icon && <span className="polypore-tab__icon" aria-hidden="true">{icon}</span>}
       <span className="polypore-tab__label">{title}</span>
@@ -335,9 +379,8 @@ export function PolyporeDockview({
     }
     const plugin = ctx.pluginsBySlot.get(slot);
     if (!plugin || !isPluginEnabled(ctx, plugin)) return;
-    const id = `${slot}-${Date.now()}`;
     const panel = api.addPanel<PluginPanelParams>({
-      id,
+      id: nextPanelId(slot),
       component: 'pluginPanel',
       tabComponent: 'polyporeTab',
       title: plugin.meta.label,
@@ -363,9 +406,8 @@ export function PolyporeDockview({
        a tab strip intentionally adds the new panel into that same group
        so it joins the strip you clicked, rather than picking a random
        group elsewhere in the layout. */
-    const id = `${slot}-${Date.now()}`;
     const panel = api.addPanel<PluginPanelParams>({
-      id,
+      id: nextPanelId(slot),
       component: 'pluginPanel',
       tabComponent: 'polyporeTab',
       title: plugin.meta.label,
@@ -433,7 +475,7 @@ export function PolyporeDockview({
     let clearFrame: number | null = null;
     let activePanelDisposable: { dispose: () => void } | null = null;
     let layoutChangeDisposable: { dispose: () => void } | null = null;
-    let exposedDockviewApi: PolyporeDockviewWindow['__polyporeDockview'];
+    let exposedDockviewApi: DockviewGlobalApi | undefined;
     const stagedMountTimers = new Set<number>();
     const stagedMountFrames = new Set<number>();
     let saveTimer: number | null = null;
@@ -661,9 +703,7 @@ export function PolyporeDockview({
       window.removeEventListener('beforeunload', saveLayout);
       if (saveTimer !== null) { window.clearTimeout(saveTimer); saveTimer = null; }
       layoutChangeDisposable?.dispose();
-      if ((window as PolyporeDockviewWindow).__polyporeDockview === exposedDockviewApi) {
-        delete (window as PolyporeDockviewWindow).__polyporeDockview;
-      }
+      if (exposedDockviewApi) clearDockviewApi(exposedDockviewApi);
       if (apiRef.current === event.api) apiRef.current = null;
     };
 
@@ -798,14 +838,20 @@ export function PolyporeDockview({
       addPanel: (slot) => onAddPanel(slot),
       focusOrAdd: focusOrAddPanel,
       focusPanel: onFocusPanel,
-      listPanels: () => event.api.panels.map((panel) => ({
-        id: String(panel.id ?? ''),
-        slot: typeof panel.params?.slot === 'string' ? panel.params.slot : '',
-        title: typeof panel.api?.title === 'string' ? panel.api.title : undefined,
-      })),
+      listPanels: () => event.api.panels.map((panel) => {
+        const slot = typeof panel.params?.slot === 'string' ? panel.params.slot : '';
+        return {
+          id: String(panel.id ?? ''),
+          slot,
+          title: typeof panel.api?.title === 'string' ? panel.api.title : undefined,
+          /* lets consumers (chat-targets) recognize agent panels by manifest
+             category instead of a hardcoded name list. */
+          category: ctx.pluginsBySlot.get(slot)?.manifest.category,
+        };
+      }),
       getLayout: () => event.api.toJSON(),
     };
-    (window as PolyporeDockviewWindow).__polyporeDockview = exposedDockviewApi;
+    setDockviewApi(exposedDockviewApi);
   }, [initialLayout, ctx.pluginsBySlot, onAddPanel, focusOrAddPanel, onFocusPanel, handleWillShowOverlay, onReady, syncAgentPanels, layoutStorageKey]);
 
   useEffect(() => () => cleanupReadyRef.current?.(), []);
@@ -877,8 +923,43 @@ function AddPanelButton({
       }
     };
     document.addEventListener('pointerdown', handlePointerDown);
+    /* focus the first item so the menu is keyboard-reachable as soon as it
+       opens; the trigger keeps focus otherwise and arrows would be dead. */
+    containerRef.current?.querySelector<HTMLElement>('.dockview-add__item')?.focus();
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [open]);
+
+  const onMenuKeyDown = (event: React.KeyboardEvent) => {
+    const items = containerRef.current
+      ? [...containerRef.current.querySelectorAll<HTMLElement>('.dockview-add__item')]
+      : [];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    switch (event.key) {
+      case 'Escape':
+        event.preventDefault();
+        setOpen(false);
+        containerRef.current?.querySelector<HTMLElement>('.dockview-add__button')?.focus();
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        items[(index + 1) % items.length]?.focus();
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length]?.focus();
+        break;
+      case 'Home':
+        event.preventDefault();
+        items[0]?.focus();
+        break;
+      case 'End':
+        event.preventDefault();
+        items[items.length - 1]?.focus();
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
     <div className="dockview-add" ref={containerRef}>
@@ -887,12 +968,13 @@ function AddPanelButton({
         className="dockview-add__button"
         aria-label="open new tab"
         aria-expanded={open}
+        aria-haspopup="menu"
         onClick={toggle}
       >
         +
       </button>
       {open && (
-        <div className="dockview-add__menu" role="menu" aria-label="add panel">
+        <div className="dockview-add__menu" role="menu" aria-label="add panel" onKeyDown={onMenuKeyDown}>
           {plugins.map((plugin) => (
             <button
               key={plugin.slot}

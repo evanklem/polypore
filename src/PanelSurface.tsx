@@ -136,6 +136,26 @@ function IframePanelSurface({
     return `${base}${sep}pluginId=${encodeURIComponent(plugin.manifest.id)}`;
   }, [isUrlMode, plugin]);
 
+  /* pin the postMessage channel to the plugin's real origin when it has one.
+     srcdoc and file:// frames are opaque-origin and must stay on '*'; an
+     http(s) plugin origin distinct from the host gets allow-same-origin so
+     the document keeps its identity and envelopes can be origin-checked —
+     otherwise a frame that navigates itself elsewhere keeps receiving host
+     responses (workspace state, file contents, masked secret lists). a
+     same-origin entry URL keeps the hard sandbox: same-origin + scripts
+     would neutralize the sandbox entirely. */
+  const expectedOrigin = useMemo(() => {
+    if (!isUrlMode || !iframeSrc) return undefined;
+    try {
+      const url = new URL(iframeSrc, window.location.href);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+      if (url.origin === window.location.origin) return undefined;
+      return url.origin;
+    } catch {
+      return undefined;
+    }
+  }, [isUrlMode, iframeSrc]);
+
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -143,10 +163,11 @@ function IframePanelSurface({
       iframe,
       manifest: plugin.manifest,
       server: hostServer,
+      expectedOrigin,
     });
     handle.ready.catch(() => {});
     return () => handle.dispose();
-  }, [hostServer, plugin.manifest, pluginLoader]);
+  }, [expectedOrigin, hostServer, plugin.manifest, pluginLoader]);
 
   return (
     <iframe
@@ -154,7 +175,7 @@ function IframePanelSurface({
       title={plugin.manifest.id}
       className="plugin-iframe"
       {...(isUrlMode ? { src: iframeSrc } : { srcDoc })}
-      sandbox="allow-scripts"
+      sandbox={expectedOrigin ? 'allow-scripts allow-same-origin' : 'allow-scripts'}
     />
   );
 }
