@@ -41,6 +41,10 @@ function makeStubHost(overrides: Partial<{
       subscribe: vi.fn().mockReturnValue(() => {}),
       set: vi.fn(),
     },
+    bus: {
+      on: vi.fn().mockReturnValue(() => {}),
+      publish: vi.fn().mockResolvedValue({ published: true, topic: '' }),
+    },
     skills: {
       list: vi.fn().mockResolvedValue({ skills: skillRecords }),
       read: vi.fn((id: string) => {
@@ -368,12 +372,16 @@ describe('AgentPanel integration', () => {
       sends.push({ panelId: detail.panelId, text: detail.text });
     };
     window.addEventListener('polypore:terminal-send', onSend as EventListener);
-    (window as unknown as { __polyporeDockview?: unknown }).__polyporeDockview = {
-      listPanels: () => [{ id: 'claude-1', slot: 'claude', title: 'claude' }],
-      focusPanel: () => {},
-      focusOrAdd: () => {},
+    window.__polypore = {
+      dockview: {
+        addPanel: () => {},
+        listPanels: () => [{ id: 'claude-1', slot: 'claude', title: 'claude', category: 'agent' }],
+        focusPanel: () => {},
+        focusOrAdd: () => {},
+        getLayout: () => ({}),
+      },
+      terminalPanels: new Set(['claude-1']),
     };
-    (window as unknown as { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels = new Set(['claude-1']);
 
     try {
       render(<AgentPanel host={host} header={stubHeader as never} />);
@@ -393,8 +401,7 @@ describe('AgentPanel integration', () => {
       expect(sends[0].text).toContain('## Handoff routes');
     } finally {
       window.removeEventListener('polypore:terminal-send', onSend as EventListener);
-      delete (window as unknown as { __polyporeDockview?: unknown }).__polyporeDockview;
-      delete (window as unknown as { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels;
+      delete window.__polypore;
     }
   });
 
