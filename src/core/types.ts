@@ -1,4 +1,4 @@
-export type AgentId = 'claude' | 'codex' | 'cursor';
+export type AgentId = 'claude' | 'codex';
 
 export type Capability =
   | 'memory-dir'

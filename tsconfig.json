@@ -23,6 +23,7 @@
   "include": [
     "src",
     "plugins",
+    "devtools",
     "vite.config.ts"
   ]
 }

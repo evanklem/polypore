@@ -48,8 +48,7 @@ yarn-error.log*
 /.knowledge/
 
 # dev-only preview entry points
-/src/_mockup-render/
-/src/_devpreview/
+/devtools/
 
 # polypore runtime state
 /.polypore/mcp-state.json

@@ -6,7 +6,6 @@ import ts from 'typescript';
 function productionFiles(root: string, extension: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
-    if (entry.name === '_mockup-render' || entry.name === '_devpreview') continue;
     const full = path.join(root, entry.name);
     if (entry.isDirectory()) files.push(...productionFiles(full, extension));
     else if (entry.name.endsWith(extension) && !entry.name.includes('.test.')) files.push(full);
@@ -24,8 +23,9 @@ describe('ui casing', () => {
 
   test('production styles never force uppercase or title case', () => {
     const violations: string[] = [];
+    const cssRoots = [path.join(process.cwd(), 'src'), path.join(process.cwd(), 'plugins')];
 
-    for (const file of productionFiles(path.join(process.cwd(), 'src'), '.css')) {
+    for (const file of cssRoots.flatMap((root) => productionFiles(root, '.css'))) {
       const css = readFileSync(file, 'utf8');
       css.split('\n').forEach((line, index) => {
         if (/text-transform:\s*(?:uppercase|capitalize)/.test(line)) {

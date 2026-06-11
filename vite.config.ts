@@ -85,7 +85,7 @@ export default defineConfig({
     },
     setupFiles: './src/setupTests.ts',
     globals: true,
-    include: ['src/**/*.test.{ts,tsx}', 'plugins/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'plugins/**/*.test.{ts,tsx}', 'devtools/**/*.test.{ts,tsx}'],
     exclude: ['node_modules', 'dist', 'build', 'docs/mockups/**'],
   },
 });
