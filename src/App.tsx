@@ -14,7 +14,7 @@ import type { PanelCatalogItem, PanelManual } from './components/overlays/panelC
 import { TopBar } from './components/topbar';
 import { BottomBar } from './components/BottomBar';
 import './styles/tokens.css';
-import './App.css';
+import './styles/app.css';
 import './glass.css';
 import { AgentId, PanelType, UserWorkspacePreset, WorkspaceName } from './core/types';
 import type {
@@ -35,7 +35,7 @@ import {
   saveWorkspaceLayout,
   workspaceLayoutStorageKey,
 } from './workspaces/presets';
-import { HostRpcServer, PluginLoader, buildPluginSrcdoc, createLocalStorageSecretStore, createMemorySecretStore, loadDotEnvIntoStore } from '../packages/host/src';
+import { HostRpcServer, PluginLoader, buildPluginSrcdoc, createLocalStorageSecretStore, createMemorySecretStore, createMetadataSecretStore, parseDotEnv } from '../packages/host/src';
 import type { ConfirmDecision, ConfirmRequest, HostStoreInitialState, SecretStore } from '../packages/host/src';
 import type { FileTreeNode, DapFrame, DapScope, DapVariable, DebugStop, EditorSearchMatch, SkillPublisher } from '../packages/host/src';
 import type { Diagnostic, HistoryEvent, PanelManifest, PluginRef, Task, VerifyRun } from '../packages/sdk/src';
@@ -44,6 +44,7 @@ import { createLoopbackHost, type KnowledgeBase, type KnowledgeBasePreset, type 
 import sdkRuntimeSource from '../packages/sdk/src/client-runtime.js?raw';
 import type { BuiltinPlugin, PanelContextDoc } from '../plugins/shared';
 import { deliverPromptToTarget, openChatPanelTargets, pluginPrefetch, perfPoint } from '../plugins/shared';
+import { dockviewApi } from './core/polypore-window';
 
 const PolyporeDockview = React.lazy(() =>
   import('./PolyporeDockview').then((mod) => ({ default: mod.PolyporeDockview })),
@@ -142,11 +143,11 @@ type AgentSlashCatalog = {
 type AgentSendResult = {
   agent: string;
   adapter: string;
-  session_id: string;
-  response_text: string;
+  sessionId: string;
+  responseText: string;
   events: Array<
     | { kind: 'message'; text: string }
-    | { kind: 'tool-call'; tool_name: string; summary: string }
+    | { kind: 'tool-call'; toolName: string; summary: string }
     | { kind: 'permission'; summary: string }
   >;
 };
@@ -159,14 +160,14 @@ type AgentRuntimeEventPayload = {
   sessionId: string;
   event:
     | { kind: 'message'; text: string }
-    | { kind: 'tool-call'; tool_name: string; summary: string }
+    | { kind: 'tool-call'; toolName: string; summary: string }
     | { kind: 'permission'; summary: string };
 };
 
 type AgentControlResult = {
   agent: string;
   adapter: string;
-  session_id: string;
+  sessionId: string;
   interrupted: boolean;
   message: string;
 };
@@ -182,7 +183,7 @@ type PtySessionResult = {
   status: string;
   output: string;
   pid?: number | null;
-  exit_code?: number | null;
+  exitCode?: number | null;
 };
 
 type PtyEventPayload = {
@@ -220,39 +221,37 @@ type UpdaterStatusResult = {
 type GitDiffShellResult = {
   mode: string;
   file?: string | null;
-  base_ref?: string | null;
-  target_ref?: string | null;
-  changed_files: string[];
+  baseRef?: string | null;
+  targetRef?: string | null;
+  changedFiles: string[];
   diff: string;
-  exit_code?: number | null;
+  exitCode?: number | null;
 };
 
 type GitWorktreeShellResult = {
   id: string;
   path: string;
   branch: string;
-  forked_from_event_id: string;
+  forkedFromEventId: string;
   output: string;
-  exit_code?: number | null;
+  exitCode?: number | null;
 };
 
 type GitRevertShellResult = {
   files: string[];
   output: string;
-  exit_code?: number | null;
+  exitCode?: number | null;
 };
 
+/* mirrors WorktreeInfo in src-tauri/src/project.rs (serde camelCase). */
 type WorktreeListShellResult = {
   id: string;
   path: string;
   branch?: string | null;
   head?: string | null;
   isCurrent?: boolean;
-  is_current?: boolean;
   isLocked?: boolean;
-  is_locked?: boolean;
   isDetached?: boolean;
-  is_detached?: boolean;
 };
 
 type SecretUseResult = {
@@ -262,16 +261,16 @@ type SecretUseResult = {
 };
 
 type IterateRunShellResult = {
-  task_id: string;
+  taskId: string;
   status: string;
   cycle: number;
-  max_cycles: number;
+  maxCycles: number;
   runs: Array<{
     id: string;
     label: string;
     command: string;
     required: boolean;
-    exit_code: number | null;
+    exitCode: number | null;
     output: string;
   }>;
 };
@@ -364,6 +363,14 @@ const MCP_HOST_RPC_ALLOWED_METHODS = new Set([
   'debug.login',
 ]);
 
+/* monotonic id source for host-internal rpc envelopes — Date.now() collides
+   when two requests land in the same millisecond. */
+let hostRpcSeq = 0;
+function nextHostRpcId() {
+  hostRpcSeq += 1;
+  return hostRpcSeq;
+}
+
 function tauriInvoke<T>(command: string, args?: Record<string, unknown>) {
   const core = (window as Window & { __TAURI__?: { core?: TauriCore } }).__TAURI__?.core;
   if (!core?.invoke) return null;
@@ -409,17 +416,6 @@ function secretHandle(value: string) {
   return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'secret';
 }
 
-function localSecretRefs(): NativeSecretRef[] {
-  return appSecretStore.list().map((entry) => ({
-    id: entry.id,
-    scope: entry.scope,
-    service: entry.service,
-    hint: entry.hint,
-    configured: entry.configured,
-    createdAt: entry.updatedAt,
-  }));
-}
-
 const PANEL_META: Record<PanelType, { icon: string; label: string }> = Object.fromEntries(
   ALL_PLUGINS.map((plugin) => [plugin.slot, plugin.meta]),
 );
@@ -429,7 +425,6 @@ function panelMeta(slot: PanelType): { icon: string; label: string } {
 }
 
 const AGENT_META: Record<AgentId, { icon: string; label: string }> = {
-  cursor: { icon: 'cs', label: 'cursor' },
   claude: { icon: 'cl', label: 'claude' },
   codex: { icon: 'cd', label: 'codex' },
 };
@@ -466,8 +461,6 @@ const DEFAULT_WORKSPACE: WorkspaceName = 'Default';
 const DEFAULT_CONTEXT_USED_PCT = 0;
 const DEFAULT_BRANCH = 'none';
 
-const chatMessages: Array<{ by: 'user' | 'agent'; text: string }> = [];
-
 type ChatSession = {
   id: string;
   agent: AgentId;
@@ -476,9 +469,14 @@ type ChatSession = {
   draft: string;
 };
 
-const toolCards: Array<{ id: string; name: string; summary: string; status: string }> = [];
-
-const pluginLoader = new PluginLoader();
+/* everything App needs from the host layer, built by createAppHost(). */
+export type AppHostBundle = {
+  hostServer: HostRpcServer;
+  pluginLoader: PluginLoader;
+  secretStore: SecretStore;
+  host: PolyporeHost;
+  settingsServices: GlobalSettingsServices;
+};
 
 function createAppHostInitialState(): HostStoreInitialState {
   return {
@@ -503,6 +501,18 @@ function createAppHostInitialState(): HostStoreInitialState {
   };
 }
 
+/* Constructs the app-wide host: the HostRpcServer with every adapter
+   registered, the plugin loader with all built-ins, the secret store, and
+   the loopback PolyporeHost for in-tree panels. Importing this module
+   performs NONE of that — index.tsx calls this once and provides the
+   bundle via AppHostProvider; rendering <App /> without a provider (tests,
+   dev preview) lazily constructs a shared default on first render. The
+   body keeps the indentation of its module-level past: several statements
+   embed multi-line template literals whose content would change if
+   re-indented. */
+export function createAppHost(): AppHostBundle {
+const pluginLoader = new PluginLoader();
+
 /* app-wide host rpc server — shared across every mounted plugin. It starts
    empty; desktop mode hydrates it from Tauri adapters and MCP/tool events. */
 const appHostServer = new HostRpcServer(createAppHostInitialState());
@@ -526,9 +536,9 @@ appHostServer.setAgentDispatcher(async ({ agent, sessionId, worktreeId, text, tr
   const result = await send;
   return {
     adapter: result.adapter,
-    responseText: result.response_text,
+    responseText: result.responseText,
     events: result.events.map((event) => {
-      if (event.kind === 'tool-call') return { kind: 'tool-call' as const, toolName: event.tool_name, summary: event.summary };
+      if (event.kind === 'tool-call') return { kind: 'tool-call' as const, toolName: event.toolName, summary: event.summary };
       if (event.kind === 'permission') return { kind: 'permission' as const, summary: event.summary };
       return { kind: 'message' as const, text: event.text };
     }).filter((event) => event.kind !== 'message'),
@@ -546,12 +556,12 @@ appHostServer.setPersistenceWriter({
   chatMessage: async ({ sessionId, agent, title, role, body, toolCallId }) => {
     const record = tauriInvoke<PersistedRow>('persistence_record_chat_message', {
       input: {
-        session_id: sessionId,
+        sessionId,
         agent,
         title,
         role,
         body,
-        tool_call_id: toolCallId,
+        toolCallId,
       },
     });
     await record;
@@ -601,7 +611,7 @@ appHostServer.setTerminalRunner({
       status: result.status,
       output: result.output,
       pid: result.pid,
-      exitCode: result.exit_code,
+      exitCode: result.exitCode,
     };
   },
   stop: async (id) => {
@@ -814,11 +824,11 @@ if (hasTauriInvoke()) {
       return {
         mode: diff.mode,
         file: diff.file ?? null,
-        baseRef: diff.base_ref ?? null,
-        targetRef: diff.target_ref ?? null,
-        changedFiles: diff.changed_files,
+        baseRef: diff.baseRef ?? null,
+        targetRef: diff.targetRef ?? null,
+        changedFiles: diff.changedFiles,
         diff: diff.diff,
-        exitCode: diff.exit_code ?? null,
+        exitCode: diff.exitCode ?? null,
       };
     },
     fork: async (eventId) => {
@@ -829,7 +839,7 @@ if (hasTauriInvoke()) {
         id: worktree.id,
         path: worktree.path,
         branch: worktree.branch,
-        forkedFromEventId: worktree.forked_from_event_id,
+        forkedFromEventId: worktree.forkedFromEventId,
       };
     },
     revert: async (_eventId, files) => {
@@ -839,7 +849,7 @@ if (hasTauriInvoke()) {
       return {
         files: reverted.files,
         output: reverted.output,
-        exitCode: reverted.exit_code ?? null,
+        exitCode: reverted.exitCode ?? null,
       };
     },
     restoreFromSnapshot: async ({ snapshotCommit, files, worktreePath }) => {
@@ -853,7 +863,7 @@ if (hasTauriInvoke()) {
       return {
         files: reverted.files,
         output: reverted.output,
-        exitCode: reverted.exit_code ?? null,
+        exitCode: reverted.exitCode ?? null,
       };
     },
     takeSnapshot: async ({ worktreeId, worktreePath, kind }) => {
@@ -877,21 +887,18 @@ if (hasTauriInvoke()) {
       const result = tauriInvoke<WorktreeListShellResult[]>('worktrees_list');
       if (!result) return [];
       try {
+        /* list-only: autosave bootstrapping happens once in the project-open
+           effect, not as a side effect of listing. */
         const rows = await result;
-        const worktrees = rows.map((row) => ({
+        return rows.map((row) => ({
           id: row.id,
           path: row.path,
           branch: row.branch ?? null,
           head: row.head ?? null,
-          isCurrent: row.isCurrent ?? row.is_current ?? false,
-          isLocked: row.isLocked ?? row.is_locked ?? false,
-          isDetached: row.isDetached ?? row.is_detached ?? false,
+          isCurrent: row.isCurrent ?? false,
+          isLocked: row.isLocked ?? false,
+          isDetached: row.isDetached ?? false,
         }));
-        const bootstrap = tauriInvoke<void>('snapshot_bootstrap', {
-          worktrees: worktrees.map((w) => ({ id: w.id, path: w.path })),
-        });
-        if (bootstrap) void bootstrap.catch(() => {});
-        return worktrees;
       } catch {
         return [];
       }
@@ -908,7 +915,7 @@ if (hasTauriInvoke()) {
         id: worktree.id,
         path: worktree.path,
         branch: worktree.branch,
-        forkedFromEventId: worktree.forked_from_event_id,
+        forkedFromEventId: worktree.forkedFromEventId,
       };
     },
   });
@@ -953,10 +960,10 @@ if (hasTauriInvoke()) {
 appHostServer.setIterateRunner(async ({ taskId, prompt, maxCycles, verifyCommands }) => {
   const run = tauriInvoke<IterateRunShellResult>('iterate_run', {
     input: {
-      task_id: taskId,
+      taskId,
       prompt,
-      max_cycles: maxCycles,
-      verify_commands: verifyCommands.map((command) => ({
+      maxCycles,
+      verifyCommands: verifyCommands.map((command) => ({
         id: command.id,
         label: command.label,
         command: command.command,
@@ -982,33 +989,47 @@ appHostServer.setIterateRunner(async ({ taskId, prompt, maxCycles, verifyCommand
   }
   const result = await run;
   return {
-    taskId: result.task_id,
+    taskId: result.taskId,
     status: result.status,
     cycle: result.cycle,
-    maxCycles: result.max_cycles,
+    maxCycles: result.maxCycles,
     runs: result.runs.map((item) => ({
       id: item.id,
       label: item.label,
       command: item.command,
       required: item.required,
-      exitCode: item.exit_code,
+      exitCode: item.exitCode,
       output: item.output,
     })),
   };
 });
 
 /* secret store lives host-side. plugins only see the masked view via
-   host.secrets.list/has. plaintext is set through the Settings overlay (a
-   host-side component) directly against this store, never through RPC. */
+   host.secrets.list/has. in the desktop shell, values live exclusively in
+   the OS keyring (Tauri secrets_* commands) and this store holds metadata
+   only; the browser preview has no shell, so it falls back to the
+   localStorage value store. */
 const appSecretStore: SecretStore = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
-  ? createLocalStorageSecretStore(window.localStorage)
+  ? (hasTauriInvoke() ? createMetadataSecretStore(window.localStorage) : createLocalStorageSecretStore(window.localStorage))
   : createMemorySecretStore();
 appHostServer.setSecretStore(appSecretStore);
 
+function localSecretRefs(): NativeSecretRef[] {
+  return appSecretStore.list().map((entry) => ({
+    id: entry.id,
+    scope: entry.scope,
+    service: entry.service,
+    hint: entry.hint,
+    configured: entry.configured,
+    createdAt: entry.updatedAt,
+  }));
+}
+
 /* discover .env files in the project and seed handles. tauri-only: the
    browser preview can't read the filesystem, so this is a no-op there.
-   manual store entries take precedence (loadDotEnvIntoStore skips existing
-   handles). values stay host-side; only masks reach the renderer/MCP. */
+   manual entries take precedence (already-known handles are skipped).
+   values go straight into the OS keyring; the renderer store keeps the
+   masked metadata only. */
 void (async () => {
   const candidates = ['.env', '.env.local', '.env.development'];
   for (const file of candidates) {
@@ -1017,7 +1038,15 @@ void (async () => {
     try {
       const body = await promise;
       if (typeof body === 'string' && body.length > 0) {
-        loadDotEnvIntoStore(body, appSecretStore, { scope: 'project' });
+        for (const { key, id, value } of parseDotEnv(body)) {
+          if (appSecretStore.has(id, 'project') || appSecretStore.has(id)) continue;
+          try {
+            await tauriInvoke('secrets_set', { id, value, scope: 'project', service: key });
+            appSecretStore.set({ id, value, scope: 'project', service: key });
+          } catch {
+            /* keyring unavailable — leave the key undiscovered */
+          }
+        }
       }
     } catch {
       /* file missing or unreadable — quietly try the next candidate */
@@ -1035,7 +1064,7 @@ appHostServer.setSecretUser(async ({ id, scope, request }) => {
 /* secrets.set — Tauri keyring write with optimistic mirror into the local
    store so the masked list updates immediately. */
 appHostServer.setSecretWriter(async ({ id, value, scope, service }) => {
-  const tauriCall = tauriInvoke<{ id: string; scope: string; service?: string; hint: string; configured: boolean; created_at: number }>(
+  const tauriCall = tauriInvoke<{ id: string; scope: string; service?: string; hint: string; configured: boolean; createdAt: number }>(
     'secrets_set',
     { id, value, scope: scope ?? 'project', service },
   );
@@ -1051,7 +1080,7 @@ appHostServer.setSecretWriter(async ({ id, value, scope, service }) => {
     service: tauriEntry.service ?? service ?? '',
     hint: tauriEntry.hint,
     configured: tauriEntry.configured,
-    updatedAt: tauriEntry.created_at,
+    updatedAt: tauriEntry.createdAt,
   };
 });
 
@@ -1144,10 +1173,10 @@ appHostServer.setDebugRunner({
     return call;
   },
   start: async ({ adapter, config }) => {
-    const call = tauriInvoke<{ session_id: string }>('debug_start', { input: { adapter, config } });
+    const call = tauriInvoke<{ sessionId: string }>('debug_start', { input: { adapter, config } });
     if (!call) throw new Error('debug is unavailable in browser preview — run the desktop shell');
     const result = await call;
-    return { sessionId: result.session_id };
+    return { sessionId: result.sessionId };
   },
   setBreakpoints: async ({ sessionId, file, breakpoints }) => {
     const call = tauriInvoke<{ breakpoints: Array<{ verified?: boolean; line?: number }> }>('debug_set_breakpoints', {
@@ -1241,9 +1270,19 @@ appHostServer.setDebugRunner({
   },
 });
 
-/* scrub evaluate output against the host-side secret store so debuggee values
-   never leak back through dumps (POLYPORE_AGENT_SCRUBBED philosophy). */
-appHostServer.setDebugScrubber((text) => {
+/* scrub evaluate output against the secret store so debuggee values never
+   leak back through dumps (POLYPORE_AGENT_SCRUBBED philosophy). desktop mode
+   scrubs host-side via secrets_scrub — the renderer never touches values;
+   the browser preview falls back to the in-process store. */
+appHostServer.setDebugScrubber(async (text) => {
+  const call = tauriInvoke<string>('secrets_scrub', { text });
+  if (call) {
+    try {
+      return await call;
+    } catch {
+      return text;
+    }
+  }
   let scrubbed = text;
   for (const entry of appSecretStore.list()) {
     const value = appSecretStore.reveal(entry.id, entry.scope);
@@ -1260,29 +1299,57 @@ const appHost: PolyporeHost = createLoopbackHost(
   (topic, fn) => appHostServer.subscribe(topic, fn),
 );
 
+for (const plugin of ALL_PLUGINS) {
+  /* URL-mode built-ins skip srcdoc generation — their iframe element is
+     mounted by IframePanelSurface via src= and doesn't need a loader entry.
+     register a placeholder so the host knows the plugin exists. */
+  const entryHtml = plugin.iframe?.build
+    ? plugin.iframe.build({
+        buildPluginSrcdoc,
+        sdkRuntime: sdkRuntimeSource as string,
+        boot: { agents: AGENT_META },
+      })
+    : buildStaticPanelPluginHtml(plugin.manifest);
+  pluginLoader.register({ manifest: plugin.manifest, entryHtml });
+}
+
+/* dependency bundle the global-settings overlay tabs consume. assembling it
+   once here keeps overlays decoupled from the host singletons. */
+const settingsServices: GlobalSettingsServices = {
+  host: appHost,
+  secretStore: appSecretStore,
+  tauriInvoke,
+  localSecretRefs,
+  secretHandle,
+  agentMeta: AGENT_META,
+};
+
+return {
+  hostServer: appHostServer,
+  pluginLoader,
+  secretStore: appSecretStore,
+  host: appHost,
+  settingsServices,
+};
+}
+
+const AppHostContext = React.createContext<AppHostBundle | null>(null);
+export const AppHostProvider = AppHostContext.Provider;
+
+let defaultAppHostBundle: AppHostBundle | null = null;
+/* tests and the dev preview render <App /> bare; the first render builds
+   one shared bundle, matching the old module-singleton behavior. */
+function getDefaultAppHost(): AppHostBundle {
+  if (!defaultAppHostBundle) defaultAppHostBundle = createAppHost();
+  return defaultAppHostBundle;
+}
+
 /* slot -> manifest.id is derived directly from the discovered plugins. */
 const PLUGIN_ID_BY_PANEL: Record<PanelType, string> = Object.fromEntries(
   ALL_PLUGINS.map((plugin) => [plugin.slot, plugin.manifest.id]),
 );
 
 const BUILTIN_PANEL_MANIFESTS: PanelManifest[] = ALL_PLUGINS.map((plugin) => plugin.manifest);
-
-const builtinPluginLoads = new Map(
-  ALL_PLUGINS.map((plugin) => {
-    /* URL-mode built-ins skip srcdoc generation — their iframe element is
-       mounted by IframePanelSurface via src= and doesn't need a loader entry.
-       register a placeholder so the host knows the plugin exists. */
-    const entryHtml = plugin.iframe?.build
-      ? plugin.iframe.build({
-          buildPluginSrcdoc,
-          sdkRuntime: sdkRuntimeSource as string,
-          boot: { agents: AGENT_META, messages: chatMessages, tools: toolCards },
-        })
-      : buildStaticPanelPluginHtml(plugin.manifest);
-    const load = pluginLoader.register({ manifest: plugin.manifest, entryHtml });
-    return [plugin.manifest.id, load] as const;
-  }),
-);
 
 type ChatPluginMessage =
   | { source: 'polypore.chat'; type: 'ready'; manifestId: string; agent?: AgentId }
@@ -1512,18 +1579,13 @@ function buildPanelCatalog(
   }).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-/* dependency bundle the global-settings overlay tabs consume. assembling it
-   once here keeps overlays decoupled from App.tsx's module-level singletons. */
-const GLOBAL_SETTINGS_SERVICES: GlobalSettingsServices = {
-  host: appHost,
-  secretStore: appSecretStore,
-  tauriInvoke,
-  localSecretRefs,
-  secretHandle,
-  agentMeta: AGENT_META,
-};
-
 function App() {
+  const {
+    hostServer: appHostServer,
+    host: appHost,
+    pluginLoader,
+    settingsServices,
+  } = React.useContext(AppHostContext) ?? getDefaultAppHost();
   const [workspace, setWorkspace] = useState<WorkspaceName>(DEFAULT_WORKSPACE);
   const workspacePreset = useMemo(() => getWorkspacePreset(workspace), [workspace]);
   const [workspaceVersion, setWorkspaceVersion] = useState(0);
@@ -1718,12 +1780,7 @@ function App() {
   const chatBoot = useMemo(
     () => ({
       agents: AGENT_META,
-      messages: chatMessages,
-      tools: toolCards,
       contextItems: allContextItems,
-      contextBudgetTokens: 200000,
-      contextWarnPct: 70,
-      contextHandoffPct: 85,
     }),
     [allContextItems],
   );
@@ -1811,10 +1868,8 @@ function App() {
 
   const handleSaveAsPreset = useCallback((name: string) => {
     if (!projectPath) return 'open a project before saving a preset';
-    const dock = (window as Window & {
-      __polyporeDockview?: { getLayout: () => unknown };
-    }).__polyporeDockview;
-    if (!dock?.getLayout) return 'workspace layout is still loading';
+    const dock = dockviewApi();
+    if (!dock) return 'workspace layout is still loading';
     try {
       const layout = dock.getLayout();
       saveWorkspaceLayout(projectPath, workspace, layout);
@@ -1852,13 +1907,10 @@ function App() {
     appHostServer.setState('workspace', nextWorkspace);
     /* hydrate user skills from disk so the agent panel shows them after reload */
     tauriInvoke<Array<Record<string, unknown>>>('skill_list')?.then((userSkills) => {
-      let seq = Date.now();
       for (const skill of userSkills ?? []) {
-        appHostServer.handle({ kind: 'request', id: seq++, method: 'skills.write', params: skill }).catch(() => {});
+        appHostServer.handle({ kind: 'request', id: nextHostRpcId(), method: 'skills.write', params: skill }).catch(() => {});
       }
     }).catch(() => {});
-    chatMessages.length = 0;
-    toolCards.length = 0;
     setContextItems([]);
     setContextByChat({});
     projectLoadingStartedAt.current = performance.now();
@@ -1976,10 +2028,7 @@ function App() {
   /* tool-card clicks from agent surfaces focus the agent panel. dockview's
      window-exposed API mounts the panel if it's not already open. */
   const focusAgentTab = useCallback(() => {
-    const dock = (window as Window & {
-      __polyporeDockview?: { focusOrAdd: (slot: string) => void };
-    }).__polyporeDockview;
-    dock?.focusOrAdd('extensions');
+    dockviewApi()?.focusOrAdd('extensions');
   }, []);
 
   useEffect(() => {
@@ -2008,7 +2057,7 @@ function App() {
   useEffect(() => {
     const unlisten = tauriListen<AgentRuntimeEventPayload>('polypore://agent-event', (payload) => {
       const event = payload.event.kind === 'tool-call'
-        ? { kind: 'tool-call' as const, toolName: payload.event.tool_name, summary: payload.event.summary }
+        ? { kind: 'tool-call' as const, toolName: payload.event.toolName, summary: payload.event.summary }
         : payload.event.kind === 'permission'
           ? { kind: 'permission' as const, summary: payload.event.summary }
           : { kind: 'message' as const, text: payload.event.text };
@@ -2032,7 +2081,7 @@ function App() {
 
   useEffect(() => {
     const unlisten = tauriListen<McpHostRpcEvent>('polypore://mcp-host-rpc', async (payload) => {
-      const rpcId = Date.now();
+      const rpcId = nextHostRpcId();
       const response = MCP_HOST_RPC_ALLOWED_METHODS.has(payload.method)
         ? await appHostServer.handle({
           kind: 'request',
@@ -2126,7 +2175,7 @@ function App() {
           worktrees: worktrees.map((w) => ({ id: w.id, path: w.path })),
         });
         if (bootstrapCall) await bootstrapCall.catch(() => {});
-        const current = worktrees.find((w) => w.isCurrent ?? w.is_current);
+        const current = worktrees.find((w) => w.isCurrent);
         if (current) appHostServer.setActiveWorktreeId(current.id);
         const eventsCall = tauriInvoke<HistoryEvent[]>('history_events_list', {
           worktreeId: null,
@@ -2254,7 +2303,7 @@ function App() {
       {settingsTarget && (
         <SettingsSurface
           key={settingsTarget.nonce}
-          services={GLOBAL_SETTINGS_SERVICES}
+          services={settingsServices}
           initialSection={settingsTarget.section}
           initialPanelSlot={settingsTarget.panelSlot}
           initialProjectGroup={settingsTarget.projectGroup}

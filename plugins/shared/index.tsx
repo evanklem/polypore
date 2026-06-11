@@ -290,7 +290,6 @@ export {
 } from './resize-handle';
 export {
   type ChatTarget,
-  CHAT_PANEL_META,
   openChatPanelTargets,
   focusChatTarget,
   waitForTerminalTarget,

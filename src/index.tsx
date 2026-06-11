@@ -1,8 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-import App from './App';
-import reportWebVitals from './reportWebVitals';
+import App, { AppHostProvider, createAppHost } from './App';
 import { applyInterfaceSettings, loadInterfaceSettings } from './settings/settingsStorage';
 
 /* Apply the saved theme BEFORE the first React commit so the initial paint uses
@@ -11,16 +10,17 @@ import { applyInterfaceSettings, loadInterfaceSettings } from './settings/settin
    is what produced the one-frame honey flash on load. */
 applyInterfaceSettings(loadInterfaceSettings());
 
+/* host construction is explicit: importing App performs no construction,
+   the entry point decides when the host comes to life. */
+const appHostBundle = createAppHost();
+
 const root = ReactDOM.createRoot(
   document.getElementById('root') as HTMLElement
 );
 root.render(
   <React.StrictMode>
-    <App />
+    <AppHostProvider value={appHostBundle}>
+      <App />
+    </AppHostProvider>
   </React.StrictMode>
 );
-
-// If you want to start measuring performance in your app, pass a function
-// to log results (for example: reportWebVitals(console.log))
-// or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
-reportWebVitals();

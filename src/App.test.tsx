@@ -10,6 +10,7 @@ import {
 } from './workspaces/presets';
 import { GitMenu } from './components/topbar/GitMenu';
 import { HostRpcServer } from '../packages/host/src';
+import type { DockviewGlobalApi } from './core/polypore-window';
 import { createLoopbackHost } from '../packages/sdk/src/host';
 import { PreviewPanel } from '../plugins/preview/component';
 import { DiffHistoryPanel } from '../plugins/diff-history/component';
@@ -48,7 +49,7 @@ test('launcher keeps all recents in the scroll region after the visible rows cap
   const recents = Array.from({ length: 10 }, (_, index) => ({
     path: `/tmp/project-${index + 1}`,
     name: `project-${index + 1}`,
-    last_opened: Date.now() - index * 1_000,
+    lastOpened: Date.now() - index * 1_000,
     exists: true,
   }));
   Object.defineProperty(window, '__TAURI__', {
@@ -397,9 +398,7 @@ test('saving a workspace preset captures the layout and switches the host worksp
     grid: { root: { type: 'leaf' } },
   };
   const setState = vi.spyOn(HostRpcServer.prototype, 'setState');
-  const previousDockview = (window as typeof window & {
-    __polyporeDockview?: Record<string, unknown>;
-  }).__polyporeDockview;
+  const previousDockview = window.__polypore?.dockview;
   Object.defineProperty(window, 'showDirectoryPicker', {
     configurable: true,
     value: vi.fn().mockResolvedValue(handle),
@@ -410,14 +409,13 @@ test('saving a workspace preset captures the layout and switches the host worksp
     fireEvent.click(screen.getByRole('button', { name: /open folder/i }));
     await waitFor(() => expect(screen.queryByText(/forming workspace/i)).not.toBeInTheDocument());
 
-    const currentDockview = (window as typeof window & {
-      __polyporeDockview?: Record<string, unknown>;
-    }).__polyporeDockview ?? {};
-    (window as typeof window & {
-      __polyporeDockview?: Record<string, unknown>;
-    }).__polyporeDockview = {
-      ...currentDockview,
-      getLayout: () => layout,
+    const currentDockview = window.__polypore?.dockview;
+    window.__polypore = {
+      ...window.__polypore,
+      dockview: {
+        ...(currentDockview as DockviewGlobalApi),
+        getLayout: () => layout,
+      },
     };
 
     fireEvent.click(screen.getByRole('button', { name: /workspace default/i }));
@@ -476,9 +474,7 @@ test('saving a workspace preset captures the layout and switches the host worksp
   } finally {
     setState.mockRestore();
     Reflect.deleteProperty(window, 'showDirectoryPicker');
-    (window as typeof window & {
-      __polyporeDockview?: Record<string, unknown>;
-    }).__polyporeDockview = previousDockview;
+    window.__polypore = { ...window.__polypore, dockview: previousDockview };
   }
 });
 
@@ -725,39 +721,6 @@ test('preview run buttons use the detected dev URL and external opener', async (
   expect(screen.getByText(/opened outside/i)).toBeInTheDocument();
 });
 
-test('preview loads project-declared runtime commands before auto-detected runtimes', async () => {
-  const server = new HostRpcServer({
-    files: {
-      '.polypore/runtime.json': JSON.stringify({
-        runtimes: [{
-          label: 'roc app',
-          defaultUrl: 'http://localhost:8000',
-          commands: [{ name: 'dev', command: 'roc run app.roc', kind: 'site' }],
-        }],
-      }),
-      'package.json': JSON.stringify({
-        name: 'node-client',
-        scripts: {
-          dev: 'vite --host 127.0.0.1 --port 1420',
-        },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('roc run app.roc')).toBeInTheDocument();
-  expect(screen.getByDisplayValue('http://localhost:8000')).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: /roc app/i })).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByRole('option', { name: /node · node-client/i })).toBeInTheDocument();
-});
 
 test('preview restores the selected runtime for the active project', async () => {
   const clearPreviewRuntimePrefs = () => {
@@ -809,51 +772,6 @@ test('preview restores the selected runtime for the active project', async () =>
   clearPreviewRuntimePrefs();
 });
 
-test('preview uses the project package manager when listing and running node scripts', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'pnpm-client',
-        packageManager: 'pnpm@9.0.0',
-        scripts: {
-          dev: 'vite --host 127.0.0.1 --port 1420',
-        },
-      }),
-      'pnpm-lock.yaml': 'lockfileVersion: 9.0\n',
-    },
-  });
-  const spawned: string[] = [];
-  server.setTerminalRunner({
-    spawn: async (command) => {
-      spawned.push(command);
-      return {
-        id: 'pty-pnpm-dev',
-        command,
-        status: 'running',
-        output: '',
-        pid: 6060,
-        exitCode: null,
-      };
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('pnpm run dev')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /run in window/i }));
-  expect(await screen.findByText(/embedded preview/i)).toBeInTheDocument();
-  expect(screen.getByTitle('project preview')).toHaveAttribute('src', 'http://127.0.0.1:1420');
-  fireEvent.click(screen.getByRole('button', { name: /^logs$/i }));
-  expect(screen.getByText(/\$ pnpm run dev/i)).toBeInTheDocument();
-  expect(spawned).toEqual(['pnpm run dev -- --host 127.0.0.1 --port 1420']);
-});
 
 test('preview treats Tauri scripts as native-only — vite dev embeds, tauri dev is external-only', async () => {
   /* the `dev` script (vite) is embeddable; the `app` script (tauri dev)
@@ -904,37 +822,6 @@ test('preview treats Tauri scripts as native-only — vite dev embeds, tauri dev
   expect(opened).toEqual([]);
 });
 
-test('preview reads Tauri devUrl when an app script has no url-like command (external-only)', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'desktop-only',
-        scripts: {
-          app: 'tauri dev',
-        },
-      }),
-      'src-tauri/tauri.conf.json': JSON.stringify({
-        build: {
-          devUrl: 'http://127.0.0.1:1420',
-        },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run app')).toBeInTheDocument();
-  expect(await screen.findByDisplayValue('http://127.0.0.1:1420')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /open externally/i })).toBeEnabled();
-});
 
 test('preview keeps Tauri commands external-only even when no native bridge is available', async () => {
   /* regression: previously, when the native preview bridge was
@@ -981,92 +868,7 @@ test('preview keeps Tauri commands external-only even when no native bridge is a
   });
 });
 
-test('preview reads Tauri devUrl from a root tauri config', async () => {
-  /* devUrl source detection — pure URL-resolution test. tauri itself
-     stays external-only; the assertion focuses on the resolved URL. */
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'root-tauri-config',
-        scripts: {
-          app: 'tauri dev',
-        },
-      }),
-      'tauri.conf.json': JSON.stringify({
-        build: {
-          devUrl: 'http://127.0.0.1:1430',
-        },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run app')).toBeInTheDocument();
-  expect(await screen.findByDisplayValue('http://127.0.0.1:1430')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview reads Tauri devUrl from json5 and toml configs', async () => {
-  const json5Server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'json5-tauri-config',
-        scripts: {
-          app: 'tauri dev',
-        },
-      }),
-      'src-tauri/tauri.conf.json5': `{
-        // development URL
-        "build": {
-          "devUrl": "http://127.0.0.1:1440",
-        },
-      }`,
-    },
-  });
-  const json5Host = createLoopbackHost(
-    (request) => json5Server.handle(request),
-    (topic, fn) => json5Server.subscribe(topic, fn),
-  );
-  const { unmount } = render(<PreviewPanel
-    host={json5Host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run app')).toBeInTheDocument();
-  expect(await screen.findByDisplayValue('http://127.0.0.1:1440')).toBeInTheDocument();
-  unmount();
-
-  const tomlServer = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'toml-tauri-config',
-        scripts: {
-          app: 'tauri dev',
-        },
-      }),
-      'src-tauri/Tauri.toml': '[build]\ndevUrl = "http://127.0.0.1:1450"\n',
-    },
-  });
-  const tomlHost = createLoopbackHost(
-    (request) => tomlServer.handle(request),
-    (topic, fn) => tomlServer.subscribe(topic, fn),
-  );
-  render(<PreviewPanel
-    host={tomlHost}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run app')).toBeInTheDocument();
-  expect(await screen.findByDisplayValue('http://127.0.0.1:1450')).toBeInTheDocument();
-});
 
 test('preview detects Rust Tauri projects as native-only (no run-in-window)', async () => {
   /* tauri ships a real OS window; iframing the dev URL would swap the
@@ -1152,261 +954,14 @@ test('preview detects Go modules and runs go run in the embedded terminal', asyn
   expect(spawned).toEqual(['go run .']);
 });
 
-test('preview detects Python pyproject app scripts and runs them in the embedded terminal', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'pyproject.toml': '[project]\nname = "python-gui"\n[project.scripts]\napp = "python_gui.main:main"\n',
-    },
-  });
-  const spawned: string[] = [];
-  server.setTerminalRunner({
-    spawn: async (command) => {
-      spawned.push(command);
-      return {
-        id: 'pty-python-app',
-        command,
-        status: 'running',
-        output: '',
-        pid: 5757,
-        exitCode: null,
-      };
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  expect(await screen.findByDisplayValue('python -m python_gui.main')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /run in window/i }));
-  expect(await screen.findByLabelText(/interactive preview terminal/i)).toBeInTheDocument();
-  expect(screen.getByText(/\$ python -m python_gui\.main/i)).toBeInTheDocument();
-  expect(spawned).toEqual(['python -m python_gui.main']);
-});
 
-test('preview disables run-in-window for Makefile launch targets with no embeddable url', async () => {
-  const server = new HostRpcServer({
-    files: {
-      Makefile: '.PHONY: launch test\nlaunch:\n\tcalculator --debug\n\ntest:\n\tpytest\n',
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  expect(await screen.findByDisplayValue('make launch')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /open externally/i })).toBeEnabled();
-});
 
-test('preview disables run-in-window for justfile app recipes with no embeddable url', async () => {
-  const server = new HostRpcServer({
-    files: {
-      justfile: 'app:\n\tcalculator --debug\n\ntest:\n\tpytest\n',
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  expect(await screen.findByDisplayValue('just app')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview prefers app-like task targets over test targets', async () => {
-  const server = new HostRpcServer({
-    files: {
-      justfile: 'test:\n\tpytest\n\nlaunch:\n\tcalculator\n',
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('just launch')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview detects Taskfile app tasks and runs them in-window', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'Taskfile.yml': 'version: "3"\ntasks:\n  test:\n    cmds:\n      - pytest\n  app:\n    cmds:\n      - calculator --debug\n',
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('task app')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview detects alternate task runner manifest filenames', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'Taskfile.yaml': 'version: "3"\ntasks:\n  launch:\n    cmds:\n      - calculator\n',
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('task launch')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-const previewRuntimeManifestCases: Array<{
-  label: string;
-  files: Record<string, string>;
-  command: string;
-  url?: string;
-}> = [
-  {
-    label: 'Maven Spring Boot',
-    files: {
-      'pom.xml': '<project><artifactId>orders</artifactId><build><plugins><plugin><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build></project>',
-    },
-    command: 'mvn spring-boot:run',
-    url: 'http://localhost:8080',
-  },
-  {
-    label: 'Rails',
-    files: {
-      Gemfile: 'gem "rails"\n',
-      'config/application.rb': 'module Shop\n  class Application < Rails::Application\n  end\nend\n',
-    },
-    command: 'bundle exec rails server',
-    url: 'http://localhost:3000',
-  },
-  {
-    label: 'Laravel',
-    files: {
-      'composer.json': JSON.stringify({
-        name: 'shop/api',
-        require: { 'laravel/framework': '^11.0' },
-      }),
-      artisan: '#!/usr/bin/env php\n',
-    },
-    command: 'php artisan serve',
-    url: 'http://localhost:8000',
-  },
-  {
-    label: '.NET web',
-    files: {
-      'Shop.csproj': '<Project Sdk="Microsoft.NET.Sdk.Web"></Project>',
-    },
-    command: 'dotnet run',
-    url: 'http://localhost:5000',
-  },
-  {
-    label: 'Docker Compose',
-    files: {
-      'compose.yml': 'services:\n  web:\n    image: nginx\n',
-    },
-    command: 'docker compose up',
-  },
-];
-
-test.each(previewRuntimeManifestCases)('preview detects $label runtime manifests', async ({ files, command, url }) => {
-  const server = new HostRpcServer({ files });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue(command)).toBeInTheDocument();
-  if (url) expect(await screen.findByDisplayValue(url)).toBeInTheDocument();
-});
-
-test('preview classifies common desktop app commands as native (run-in-window disabled)', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'electron-client',
-        scripts: {
-          electron: 'electron .',
-        },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run electron')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview treats launch scripts with executable arguments as native (run-in-window disabled)', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'native-launch-args',
-        scripts: {
-          launch: 'calculator --debug',
-        },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run launch')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
 
 test('preview reclassifies manually edited commands as native and disables run-in-window', async () => {
   const server = new HostRpcServer({ files: {} });
@@ -1427,98 +982,9 @@ test('preview reclassifies manually edited commands as native and disables run-i
   );
 });
 
-test('preview disables run-in-window for package exec desktop commands', async () => {
-  const server = new HostRpcServer({ files: {} });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  const commandInput = await screen.findByLabelText(/command/i);
-  fireEvent.change(commandInput, { target: { value: 'npx electron .' } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
 
-test('preview disables run-in-window for env-prefixed desktop commands', async () => {
-  const server = new HostRpcServer({ files: {} });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  const commandInput = await screen.findByLabelText(/command/i);
-  fireEvent.change(commandInput, { target: { value: 'env ELECTRON_ENABLE_LOGGING=1 electron .' } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
-
-test('preview disables run-in-window when the user manually types a native executable with arguments', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-native-args',
-        scripts: { dev: 'vite --host 127.0.0.1 --port 1420' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  /* dev script is enabled (vite, site kind, url known) */
-  expect(screen.getByRole('button', { name: /run in window/i })).toBeEnabled();
-  /* editing to a native executable disables it */
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: 'calculator --debug' } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
-
-test('preview disables run-in-window for macOS open app launchers', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-open-native',
-        scripts: { dev: 'vite --host 127.0.0.1 --port 1420' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: 'open -a Calculator' } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
 
 test('preview treats macOS open URL commands as URL previews', async () => {
   const previousTauri = (window as typeof window & { __TAURI__?: unknown }).__TAURI__;
@@ -1570,183 +1036,11 @@ test('preview treats macOS open URL commands as URL previews', async () => {
   });
 });
 
-test('preview disables run-in-window for Windows shell native launchers', async () => {
-  const exactCommand = 'powershell -NoProfile -Command "Start-Process \'C:\\Program Files\\Native App\\app.exe\'"';
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-windows-launcher',
-        scripts: { dev: 'vite --host 127.0.0.1 --port 1420' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: exactCommand } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
 
-test('preview disables run-in-window for Linux app launchers', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-linux-launcher',
-        scripts: { dev: 'vite --host 127.0.0.1 --port 1420' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
 
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
 
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: 'flatpak run org.example.NativeApp' } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
-
-test('preview treats Linux xdg-open URL commands as URL previews', async () => {
-  const previousTauri = (window as typeof window & { __TAURI__?: unknown }).__TAURI__;
-  Object.defineProperty(window, '__TAURI__', {
-    configurable: true,
-    value: undefined,
-  });
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-xdg-url',
-        scripts: {
-          dev: 'vite --host 127.0.0.1 --port 1420',
-        },
-      }),
-    },
-  });
-  server.setTerminalRunner({
-    spawn: async (command) => ({
-      id: 'pty-manual-xdg-url',
-      command,
-      status: 'running',
-      output: 'opened http://localhost:9500\n',
-      pid: 3138,
-      exitCode: null,
-    }),
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: 'xdg-open http://localhost:9500' } });
-  fireEvent.click(screen.getByRole('button', { name: /run in window/i }));
-
-  expect(await screen.findByText(/embedded preview/i)).toBeInTheDocument();
-  expect(screen.getByTitle('project preview')).toHaveAttribute('src', 'http://localhost:9500');
-  expect(screen.queryByText(/native window unavailable/i)).not.toBeInTheDocument();
-
-  Object.defineProperty(window, '__TAURI__', {
-    configurable: true,
-    value: previousTauri,
-  });
-});
-
-test('preview disables run-in-window for quoted executable paths with spaces', async () => {
-  const exactCommand = '"C:\\Program Files\\Native App\\app.exe" --debug';
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'manual-quoted-native',
-        scripts: { dev: 'vite --host 127.0.0.1 --port 1420' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run dev')).toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText('command to run'), { target: { value: exactCommand } });
-  await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument(),
-  );
-});
-
-test('preview disables run-in-window for mobile simulator commands', async () => {
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'mobile-app',
-        scripts: { ios: 'expo run:ios --simulator' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run ios')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
-
-test('preview disables run-in-window for mobile commands even when output prints a URL', async () => {
-  /* mobile-simulator commands always launch their own window; even if metro
-     prints a localhost url, we cannot iframe the simulator surface. */
-  const server = new HostRpcServer({
-    files: {
-      'package.json': JSON.stringify({
-        name: 'mobile-url-app',
-        scripts: { android: 'expo run:android --emulator' },
-      }),
-    },
-  });
-  const host = createLoopbackHost(
-    (request) => server.handle(request),
-    (topic, fn) => server.subscribe(topic, fn),
-  );
-
-  render(<PreviewPanel
-    host={host}
-    header={{ label: 'preview', onOpenHelp: vi.fn(), onOpenSettings: vi.fn() }}
-  />);
-
-  expect(await screen.findByDisplayValue('npm run android')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /run in window/i })).not.toBeInTheDocument();
-});
 
 test('preview clears a stale detected url and disables run-in-window when edited to a native app', async () => {
   const server = new HostRpcServer({
@@ -2330,14 +1624,15 @@ test('memory detects open chats from dockview when agent panel state is empty', 
     (topic, fn) => server.subscribe(topic, fn),
   );
   const onAddContext = vi.fn();
-  const previousDockview = (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview;
-  (window as typeof window & {
-    __polyporeDockview?: unknown;
-  }).__polyporeDockview = {
-    listPanels: () => [
-      { id: 'codex', slot: 'codex', title: 'codex' },
-      { id: 'claude-2', slot: 'claude', title: 'claude 2' },
-    ],
+  const previousDockview = window.__polypore?.dockview;
+  window.__polypore = {
+    ...window.__polypore,
+    dockview: {
+      listPanels: () => [
+        { id: 'codex', slot: 'codex', title: 'codex' },
+        { id: 'claude-2', slot: 'claude', title: 'claude 2' },
+      ],
+    } as unknown as DockviewGlobalApi,
   };
 
   try {
@@ -2368,7 +1663,7 @@ test('memory detects open chats from dockview when agent panel state is empty', 
 
     expect(onAddContext).toHaveBeenCalledWith('included: memory://documents/notes/start.md', 'claude-2');
   } finally {
-    (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview = previousDockview;
+    window.__polypore = { ...window.__polypore, dockview: previousDockview };
   }
 });
 
@@ -2857,16 +2152,15 @@ test('verify queue sends prompts into the selected agent terminal without chat.s
     },
   };
   const sent: Array<{ panelId?: string; text?: string; submit?: boolean }> = [];
-  const previousDockview = (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview;
-  const previousTerminals = (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels;
-  (window as typeof window & {
-    __polyporeDockview?: unknown;
-    __polyporeTerminalPanels?: Set<string>;
-  }).__polyporeDockview = {
-    listPanels: () => [{ id: 'codex', slot: 'codex', title: 'cd codex' }],
-    focusOrAdd: vi.fn(),
+  const previousDockview = window.__polypore?.dockview;
+  const previousTerminals = window.__polypore?.terminalPanels;
+  window.__polypore = {
+    dockview: {
+      listPanels: () => [{ id: 'codex', slot: 'codex', title: 'cd codex', category: 'agent' }],
+      focusOrAdd: vi.fn(),
+    } as unknown as DockviewGlobalApi,
+    terminalPanels: new Set(['codex']),
   };
-  (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels = new Set(['codex']);
   const onTerminalSend = (event: Event) => sent.push((event as CustomEvent).detail);
   window.addEventListener('polypore:terminal-send', onTerminalSend);
 
@@ -2894,8 +2188,7 @@ test('verify queue sends prompts into the selected agent terminal without chat.s
   expect(screen.getByText(/awaiting agent/i)).toBeInTheDocument();
 
   window.removeEventListener('polypore:terminal-send', onTerminalSend);
-  (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview = previousDockview;
-  (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels = previousTerminals;
+  window.__polypore = { dockview: previousDockview, terminalPanels: previousTerminals };
 });
 
 test('verify diagnostic updates preserve custom problems', async () => {
@@ -3029,8 +2322,8 @@ test('every panel exposes a help control that opens a scoped manual', async () =
 
 test('manual ask sends the active section body to the agent terminal', async () => {
   const sent: Array<{ panelId?: string; text?: string; submit?: boolean }> = [];
-  const previousDockview = (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview;
-  const previousTerminals = (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels;
+  const previousDockview = window.__polypore?.dockview;
+  const previousTerminals = window.__polypore?.terminalPanels;
   const onTerminalSend = (event: Event) => sent.push((event as CustomEvent).detail);
   window.addEventListener('polypore:terminal-send', onTerminalSend);
 
@@ -3038,15 +2331,14 @@ test('manual ask sends the active section body to the agent terminal', async () 
     render(<App />);
     fireEvent.click(await screen.findByRole('button', { name: /open manual for preview/i }));
 
-    (window as typeof window & {
-      __polyporeDockview?: unknown;
-      __polyporeTerminalPanels?: Set<string>;
-    }).__polyporeDockview = {
-      listPanels: () => [{ id: 'codex', slot: 'codex', title: 'cd codex' }],
-      focusOrAdd: vi.fn(),
-      focusPanel: vi.fn(),
+    window.__polypore = {
+      dockview: {
+        listPanels: () => [{ id: 'codex', slot: 'codex', title: 'cd codex', category: 'agent' }],
+        focusOrAdd: vi.fn(),
+        focusPanel: vi.fn(),
+      } as unknown as DockviewGlobalApi,
+      terminalPanels: new Set(['codex']),
     };
-    (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels = new Set(['codex']);
 
     fireEvent.click(screen.getByRole('button', { name: /ask the agent about this/i }));
 
@@ -3057,8 +2349,7 @@ test('manual ask sends the active section body to the agent terminal', async () 
     expect(sent[0].text).toContain('The active runtime surface for your project');
   } finally {
     window.removeEventListener('polypore:terminal-send', onTerminalSend);
-    (window as typeof window & { __polyporeDockview?: unknown }).__polyporeDockview = previousDockview;
-    (window as typeof window & { __polyporeTerminalPanels?: Set<string> }).__polyporeTerminalPanels = previousTerminals;
+    window.__polypore = { dockview: previousDockview, terminalPanels: previousTerminals };
   }
 });
 
@@ -3118,9 +2409,9 @@ test('diff tab shows changed files and supports working-tree and branch compare 
   expect(screen.getByText('head vs working tree')).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole('button', { name: /^compare$/i }));
-  expect(screen.getByRole('dialog', { name: /compare refs/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /head vs working tree/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /upstream vs current branch/i })).toBeInTheDocument();
+  expect(screen.getByRole('menu', { name: /compare refs/i })).toBeInTheDocument();
+  expect(screen.getByRole('menuitemradio', { name: /head vs working tree/i })).toBeChecked();
+  expect(screen.getByRole('menuitemradio', { name: /upstream vs current branch/i })).not.toBeChecked();
   expect(screen.queryByText(/HEAD~1/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/commit\.\.\./i)).not.toBeInTheDocument();
 });

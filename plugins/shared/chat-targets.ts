@@ -7,6 +7,12 @@
  * the terminal component picks up and writes into the process. keeping it in
  * one place stops the three callers from drifting apart. */
 
+import {
+  dispatchTerminalSend,
+  dockviewApi,
+  isTerminalPanelMounted,
+} from '../../src/core/polypore-window';
+
 export type ChatTarget = {
   id: string;
   agent: string;
@@ -15,36 +21,25 @@ export type ChatTarget = {
   createdAt: number;
 };
 
-export const CHAT_PANEL_META: Record<string, { title: string }> = {
-  codex: { title: 'codex' },
-  claude: { title: 'claude' },
-};
-
-type DockviewWindow = Window & {
-  __polyporeDockview?: {
-    listPanels?: () => Array<{ id: string; slot: string; title?: string }>;
-    focusOrAdd?: (slot: string) => void;
-    focusPanel?: (id: string) => void;
-  };
-};
-
-/* the running claude/codex sessions, newest-listed-last, ready to send to. */
+/* the running agent sessions, newest-listed-last, ready to send to. agent
+   panels are recognized by manifest.category === 'agent' (surfaced through
+   listPanels), not a hardcoded name list, so third-party agent plugins are
+   valid send-to-chat targets too. */
 export function openChatPanelTargets(): ChatTarget[] {
-  const dock = (window as DockviewWindow).__polyporeDockview;
-  let panels: Array<{ id: string; slot: string; title?: string }> = [];
+  const dock = dockviewApi();
+  let panels: Array<{ id: string; slot: string; title?: string; category?: string }> = [];
   try {
-    panels = dock?.listPanels?.() ?? [];
+    panels = dock?.listPanels() ?? [];
   } catch {
     panels = [];
   }
   return panels.flatMap((panel, index) => {
-    const meta = CHAT_PANEL_META[panel.slot];
-    if (!meta || !panel.id) return [];
+    if (panel.category !== 'agent' || !panel.id) return [];
     return [{
       id: panel.id,
       agent: panel.slot,
       slot: panel.slot,
-      title: panel.title?.replace(/^[^\w]+/, '').trim() || `${meta.title} ${index + 1}`,
+      title: panel.title?.replace(/^[^\w]+/, '').trim() || `${panel.slot} ${index + 1}`,
       createdAt: index,
     }];
   });
@@ -53,10 +48,10 @@ export function openChatPanelTargets(): ChatTarget[] {
 /* bring the target session into view before delivery. prefers focusing the
    exact panel instance; falls back to focus-by-slot on older shells. */
 export function focusChatTarget(target: ChatTarget) {
-  const dock = (window as DockviewWindow).__polyporeDockview;
+  const dock = dockviewApi();
   try {
     if (dock?.focusPanel) dock.focusPanel(target.id);
-    else dock?.focusOrAdd?.(target.slot);
+    else dock?.focusOrAdd(target.slot);
   } catch {
     /* focusing is best-effort; terminal delivery still checks mount readiness. */
   }
@@ -65,12 +60,11 @@ export function focusChatTarget(target: ChatTarget) {
 /* resolves true once the target terminal's pty has registered itself, or
    false after a short grace window (cold-started terminals). */
 export function waitForTerminalTarget(panelId: string) {
-  const global = window as Window & { __polyporeTerminalPanels?: Set<string> };
-  if (global.__polyporeTerminalPanels?.has(panelId)) return Promise.resolve(true);
+  if (isTerminalPanelMounted(panelId)) return Promise.resolve(true);
   return new Promise<boolean>((resolve) => {
     const startedAt = performance.now();
     const check = () => {
-      if (global.__polyporeTerminalPanels?.has(panelId)) {
+      if (isTerminalPanelMounted(panelId)) {
         resolve(true);
         return;
       }
@@ -85,13 +79,7 @@ export function waitForTerminalTarget(panelId: string) {
 }
 
 export function sendPromptToTerminal(target: ChatTarget, text: string) {
-  window.dispatchEvent(new CustomEvent('polypore:terminal-send', {
-    detail: {
-      panelId: target.id,
-      text,
-      submit: true,
-    },
-  }));
+  dispatchTerminalSend({ panelId: target.id, text, submit: true });
 }
 
 /* one-shot helper: pick-or-deliver. returns a status describing what
