@@ -6,16 +6,16 @@ order: 1
 
 Polypore is built from panels, and every panel is a plugin. The built-in editor,
 chat, preview, problems, and debug panels are ordinary plugins installed at
-`plugins/` — nothing about them is privileged. A panel you write follows the
+`plugins/`: nothing about them is privileged. A panel you write follows the
 exact same path.
 
 ## the plugin model
 
 A plugin is a directory with two required files:
 
-- `polypore.json` — the manifest. Declares identity, permissions, and where to
+- `polypore.json`: the manifest. Declares identity, permissions, and where to
   load the panel's UI from.
-- `index.html` — the entry point. An HTML file the host loads into a sandboxed
+- `index.html`: the entry point. An HTML file the host loads into a sandboxed
   iframe.
 
 The host injects the client runtime (`window.polypore`) into every iframe before
@@ -51,16 +51,16 @@ my-panel/
 }
 ```
 
-**id** — reverse-DNS style, unique across all installed plugins. Built-in panels
+**id**: reverse-DNS style, unique across all installed plugins. Built-in panels
 use `polypore.*`; yours should use your own namespace.
 
-**entry** — path relative to the plugin directory. Can be an `index.html`,
+**entry**: path relative to the plugin directory. Can be an `index.html`,
 any HTML file, or a URL served by a dev server during development.
 
-**category** — one of `editor`, `agent`, `verify`, `knowledge`, `runtime`,
+**category**: one of `editor`, `agent`, `verify`, `knowledge`, `runtime`,
 `other`. Used to group panels in the catalog.
 
-**defaultArea** — where the panel opens by default: `center`, `left`, `right`,
+**defaultArea**: where the panel opens by default: `center`, `left`, `right`,
 or `bottom`. The user can drag it anywhere after the first open.
 
 ## permissions
@@ -99,34 +99,34 @@ needs before they install it.
 | `ui.confirm` | `polypore.ui.confirm` |
 | `fs.write` | `polypore.fs.write`, `.delete`, `.rename`, `.mkdir` |
 
-Declare only what you use — users can see the list before installing.
+Declare only what you use; users can see the list before installing.
 
 ## the client runtime
 
 The host injects `window.polypore` before any of your scripts execute. All
 methods return promises. The top-level namespaces are:
 
-- **`polypore.state`** — read shared IDE state (active agent, active panel,
+- **`polypore.state`**: read shared IDE state (active agent, active panel,
   branch, permission mode, workspace, etc.)
-- **`polypore.editor`** — file tree, open files, read/apply edits, cursor,
+- **`polypore.editor`**: file tree, open files, read/apply edits, cursor,
   decorations, save events
-- **`polypore.chat`** — sessions, history, send messages, stream agent replies
-- **`polypore.tasks`** — task list shared across panels and agents
-- **`polypore.diagnostics`** — lint/type errors from the language server
-- **`polypore.verify`** — verify runs (test / build / check commands)
-- **`polypore.terminal`** — spawn and drive pty sessions
-- **`polypore.preview`** — register a preview target; request a refresh
-- **`polypore.history`** — diff & history events; fork a worktree from a snapshot
-- **`polypore.knowledge`** — read and write knowledge base documents
-- **`polypore.secrets`** — list handles; use a secret to make a proxied HTTP call
-- **`polypore.storage`** — key-value store scoped to your plugin id
-- **`polypore.git`** — status, log, blame, branches
-- **`polypore.http`** — proxied HTTP fetch (routed through the Tauri shell)
-- **`polypore.fs`** — write, delete, rename, mkdir
-- **`polypore.ui`** — notify, confirm, input box, quick pick, status bar, panel
+- **`polypore.chat`**: sessions, history, send messages, stream agent replies
+- **`polypore.tasks`**: task list shared across panels and agents
+- **`polypore.diagnostics`**: lint/type errors from the language server
+- **`polypore.verify`**: verify runs (test / build / check commands)
+- **`polypore.terminal`**: spawn and drive pty sessions
+- **`polypore.preview`**: register a preview target; request a refresh
+- **`polypore.history`**: diff & history events; fork a worktree from a snapshot
+- **`polypore.knowledge`**: read and write knowledge base documents
+- **`polypore.secrets`**: list handles; use a secret to make a proxied HTTP call
+- **`polypore.storage`**: key-value store scoped to your plugin id
+- **`polypore.git`**: status, log, blame, branches
+- **`polypore.http`**: proxied HTTP fetch (routed through the Tauri shell)
+- **`polypore.fs`**: write, delete, rename, mkdir
+- **`polypore.ui`**: notify, confirm, input box, quick pick, status bar, panel
   title/badge
-- **`polypore.panels`** — open or close other panels by id
-- **`polypore.bus`** — low-level publish/subscribe across panels
+- **`polypore.panels`**: open or close other panels by id
+- **`polypore.bus`**: low-level publish/subscribe across panels
 
 Subscribe methods (`onChange`, `onOpen`, `onEvent`, etc.) return an unsubscribe
 function. Call it in your teardown to avoid memory leaks.
@@ -161,7 +161,7 @@ function. Call it in your teardown to avoid memory leaks.
 
 Pair that `index.html` with a `polypore.json` that declares `"permissions":
 ["state.read"]` and you have a working panel. Drop the directory into
-`plugins/` and restart Polypore — it appears in the catalog immediately.
+`plugins/` and restart Polypore; it appears in the catalog immediately.
 
 ## adding a manual page
 
@@ -175,7 +175,7 @@ the panel does and how to use it, not how it is implemented.
 ## using secrets
 
 If your panel calls an external API with a key the user has stored in Polypore's
-[credentials](the-ide/settings) panel, do not read the value directly — use `polypore.secrets.use`:
+[credentials](the-ide/settings) panel; do not read the value directly, use `polypore.secrets.use`:
 
 ```js
 const result = await polypore.secrets.use({
@@ -186,7 +186,7 @@ const result = await polypore.secrets.use({
     headers: { 'Accept': 'application/json' },
   },
 });
-// result.status, result.headers, result.body — key was never in JS
+// result.status, result.headers, result.body; key was never in JS
 ```
 
 The raw value never crosses into your iframe. Declare `secrets.use` (and
@@ -195,7 +195,7 @@ The raw value never crosses into your iframe. Declare `secrets.use` (and
 ## installing plugins
 
 During development, place your directory directly under `plugins/` and restart.
-For distribution, a plugin is a zip of the directory — the user installs it from
+For distribution, a plugin is a zip of the directory; the user installs it from
 [settings → extensions](the-ide/settings). Polypore validates the manifest
 schema on install and shows the permission list before confirming.
 
@@ -211,4 +211,4 @@ import type { PanelManifest } from '@polypore/sdk';
 
 The `window.polypore` shape is available as `PolyporeHost` from the same
 package. The client runtime itself (`client-runtime.js`) is a self-contained
-IIFE that the host injects — you do not import it in your bundle.
+IIFE that the host injects; you do not import it in your bundle.

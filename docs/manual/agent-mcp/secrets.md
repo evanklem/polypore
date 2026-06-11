@@ -35,7 +35,7 @@ response headers/body before returning the result.
   They're stored in the OS keyring when the desktop shell is present, with a
   local fallback otherwise.
 - **check, don't reveal.** `polypore.secrets.has` and the credentials panel tell
-  you whether a key is configured — never what it is.
+  you whether a key is configured, never what it is.
 - **scope deliberately.** `project` secrets are tied to the active project;
   `user` secrets are available across projects.
 - **let `.env` discovery seed handles.** In the desktop shell, Polypore scans

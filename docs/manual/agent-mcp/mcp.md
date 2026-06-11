@@ -6,11 +6,11 @@ order: 1
 
 Polypore exposes its IDE features to agents through a built-in **MCP server**
 called `polypore-ide`. When you open a project in Claude Code, the server starts
-automatically — it reads the `.mcp.json` file at the project root, which is
+automatically; it reads the `.mcp.json` file at the project root, which is
 already checked in. You do not configure or launch it yourself.
 
 ```json
-// .mcp.json — already present at project root
+// .mcp.json (already present at project root)
 {
   "mcpServers": {
     "polypore-ide": {
@@ -25,7 +25,7 @@ already checked in. You do not configure or launch it yourself.
 Any agent CLI that supports MCP (Claude Code, Codex) and is started from the
 project directory will connect to this server automatically. The agent can then
 call the tools listed below to drive the IDE, read files, run checks, and use
-mediated secrets — all through named, validated tool calls you can watch happen.
+mediated secrets, all through named, validated tool calls you can watch happen.
 
 ## verifying the connection
 
@@ -34,7 +34,7 @@ Call `polypore.host.ping` (or any tool in the list, such as
 the host is not running, the tools will return an error explaining the server
 cannot reach the Polypore host. Start Polypore and try again.
 
-You can also check the tool list directly — any MCP-aware agent CLI exposes a
+You can also check the tool list directly; any MCP-aware agent CLI exposes a
 way to enumerate available tools. The live list is the authoritative source;
 the server's exposed tools reflect the running host's capabilities.
 
@@ -49,7 +49,7 @@ agent makes as it happens.
 
 | namespace | what the agent can do |
 |---|---|
-| `polypore.manual` | read this manual — any section by slug |
+| `polypore.manual` | read this manual, any section by slug |
 | `polypore.state.*` | read IDE state: branch, active workspace, permission mode |
 | `polypore.panel.*` | open or close panels by id |
 | `polypore.editor.*` | open files in the editor, read content, search by pattern |

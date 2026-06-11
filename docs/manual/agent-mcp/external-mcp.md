@@ -14,14 +14,14 @@ without changing your agent CLI's main config.
 Open the [agent panel](panels/polypore.agent) and find the **MCP rail** on the left. Click **add
 server** and fill in:
 
-- **name** — a label shown in the rail and used as the `server` argument to
+- **name**: a label shown in the rail and used as the `server` argument to
   `polypore.mcp.invoke`.
-- **url** — the server's HTTP or SSE endpoint.
-- **scope** — `project` makes the server available only in this project;
+- **url**: the server's HTTP or SSE endpoint.
+- **scope**: `project` makes the server available only in this project;
   `user` makes it available across all your projects.
-- **auth** — attach a secret handle instead of pasting a raw token. The handle
+- **auth**: attach a secret handle instead of pasting a raw token. The handle
   name matches one you stored in **settings → credentials**.
-- **allow insecure** — only for local dev servers; leave off for anything with a
+- **allow insecure**: only for local dev servers; leave off for anything with a
   real token.
 
 The agent can do the same through `polypore.mcp.servers.upsert`.
@@ -46,15 +46,15 @@ An agent calls `polypore.mcp.invoke` with:
 
 Polypore routes the call to the registered server. If the server entry has an
 `authRef`, Polypore resolves the secret handle and injects the token into the
-outbound request — the raw value is never part of the tool call arguments.
+outbound request, the raw value is never part of the tool call arguments.
 
 ## managing servers
 
-- **list servers** — `polypore.mcp.servers.list` returns all registered servers
+- **list servers**: `polypore.mcp.servers.list` returns all registered servers
   for a given scope. The Agent panel shows the same list in the MCP rail.
-- **remove a server** — use the remove button in the rail or call
+- **remove a server**: use the remove button in the rail or call
   `polypore.mcp.servers.delete` with the server id.
-- **discovered servers** — servers from your agent CLI's own config (e.g.
+- **discovered servers**: servers from your agent CLI's own config (e.g.
   `~/.claude/claude_desktop_config.json`) appear in the rail as read-only.
   Their source of truth is the external config, so edit them there.
 
