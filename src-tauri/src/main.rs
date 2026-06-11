@@ -159,6 +159,7 @@ fn main() {
             updater::updater_status,
             updater::updater_install,
             secrets::secrets_set,
+            secrets::secrets_set_allowed_hosts,
             secrets::secrets_list,
             secrets::secrets_has,
             secrets::secrets_delete,

@@ -427,6 +427,13 @@
   box-shadow: 0 0 8px -1px var(--danger);
 }
 .credentials-row__dot[data-on] { background: var(--ok); box-shadow: 0 0 8px -1px var(--ok); }
+.credentials-row__hosts-editor {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.credentials-row__hosts-editor .surface-input { flex: 1; }
 
 .credentials-form {
   display: grid;
@@ -438,7 +445,7 @@
 }
 .credentials-form__meta {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 120px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 100px minmax(0, 1.4fr);
   gap: var(--sp-3);
 }
 .credentials-form__value { display: flex; align-items: end; gap: var(--sp-2); }

@@ -1017,7 +1017,10 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
 
   const deleteEntry = async (path: string, kind: 'file' | 'folder') => {
     setContextMenu(null);
-    const { confirmed } = await host.ui.confirm(`delete "${path.split('/').pop()}"?`);
+    const { confirmed } = await host.ui.confirm(
+      `delete "${path.split('/').pop()}"?`,
+      { confirmLabel: kind === 'folder' ? 'delete folder' : 'delete file' },
+    );
     if (!confirmed) return;
     try {
       await host.fs.delete(path);

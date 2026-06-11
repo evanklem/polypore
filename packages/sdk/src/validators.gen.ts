@@ -1902,6 +1902,15 @@ const schemas: Record<SchemaName, unknown> = {
         "properties": {
           "msg": {
             "type": "string"
+          },
+          "confirmLabel": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

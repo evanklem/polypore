@@ -6,12 +6,22 @@ export interface CredentialsTabProps {
   setNotice: (value: string) => void;
 }
 
+/* "api.github.com, *.example.com" → ["api.github.com", "*.example.com"] */
+function parseHostsInput(value: string): string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((host) => host.trim())
+    .filter(Boolean);
+}
+
 export function CredentialsTab({ services, setNotice }: CredentialsTabProps) {
   const { secretStore, tauriInvoke, localSecretRefs, secretHandle } = services;
   const [secretName, setSecretName] = useState('');
   const [secretService, setSecretService] = useState('');
   const [secretScope, setSecretScope] = useState<'user' | 'project'>('user');
   const [secretValue, setSecretValue] = useState('');
+  const [secretHosts, setSecretHosts] = useState('');
+  const [hostsEditor, setHostsEditor] = useState<{ key: string; value: string } | null>(null);
   const ignoreStoreChangeRef = useRef(false);
   const [secrets, setSecrets] = useState<NativeSecretRef[]>(() => localSecretRefs());
   const [secretError, setSecretError] = useState('');
@@ -53,6 +63,7 @@ export function CredentialsTab({ services, setNotice }: CredentialsTabProps) {
         value: secretValue,
         scope: secretScope,
         service,
+        allowedHosts: parseHostsInput(secretHosts),
       });
       if (nativeSet) {
         await nativeSet;
@@ -69,7 +80,29 @@ export function CredentialsTab({ services, setNotice }: CredentialsTabProps) {
       return;
     }
     setSecretValue('');
+    setSecretHosts('');
     setNotice(`saved ${id}`);
+  };
+
+  const saveAllowedHosts = async (secret: NativeSecretRef, value: string) => {
+    const nativeUpdate = tauriInvoke<NativeSecretRef>('secrets_set_allowed_hosts', {
+      id: secret.id,
+      scope: secret.scope,
+      allowedHosts: parseHostsInput(value),
+    });
+    if (!nativeUpdate) {
+      setNotice('allowed hosts require the desktop shell');
+      return;
+    }
+    try {
+      await nativeUpdate;
+      setHostsEditor(null);
+      await loadSecrets();
+      setSecretError('');
+      setNotice(`updated allowed hosts for ${secret.id}`);
+    } catch (err) {
+      setSecretError(String(err).toLowerCase());
+    }
   };
 
   const deleteSecret = async (secret: NativeSecretRef) => {
@@ -112,22 +145,55 @@ export function CredentialsTab({ services, setNotice }: CredentialsTabProps) {
           ? <p className="surface-empty"><span>no credentials configured yet</span></p>
           : (
             <div className="surface-list">
-              {secrets.map((secret) => (
-                <div className="surface-row credentials-row" key={`${secret.scope}:${secret.id}`}>
-                  <span className="credentials-row__dot" data-on={secret.configured || undefined} aria-hidden="true" />
-                  <span className="surface-row__main">
-                    <strong>{secret.id}</strong>
-                    <small>{secret.service ?? 'custom'} · {secret.scope === 'user' ? 'global' : secret.scope}{secret.hint ? ` · ${secret.hint}` : ''}</small>
-                  </span>
-                  <span className="surface-row__actions">
-                    <span className={secret.configured ? 'surface-pill surface-pill--ok' : 'surface-pill surface-pill--warn'}>
-                      {secret.configured ? 'configured' : 'missing'}
+              {secrets.map((secret) => {
+                const rowKey = `${secret.scope}:${secret.id}`;
+                const hosts = secret.allowedHosts ?? [];
+                const editing = hostsEditor?.key === rowKey;
+                return (
+                  <div className="surface-row credentials-row" key={rowKey}>
+                    <span className="credentials-row__dot" data-on={secret.configured || undefined} aria-hidden="true" />
+                    <span className="surface-row__main">
+                      <strong>{secret.id}</strong>
+                      <small>
+                        {secret.service ?? 'custom'} · {secret.scope === 'user' ? 'global' : secret.scope}
+                        {secret.hint ? ` · ${secret.hint}` : ''}
+                        {` · ${hosts.length > 0 ? `hosts: ${hosts.join(', ')}` : 'no allowed hosts — use is blocked'}`}
+                      </small>
+                      {editing && (
+                        <span className="credentials-row__hosts-editor">
+                          <input
+                            className="surface-input"
+                            value={hostsEditor.value}
+                            placeholder="api.github.com, *.example.com"
+                            aria-label={`allowed hosts for ${secret.id}`}
+                            onChange={(event) => setHostsEditor({ key: rowKey, value: event.target.value })}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') void saveAllowedHosts(secret, hostsEditor.value);
+                              if (event.key === 'Escape') setHostsEditor(null);
+                            }}
+                          />
+                          <button type="button" className="surface-btn surface-btn--sm" onClick={() => saveAllowedHosts(secret, hostsEditor.value)}>save</button>
+                        </span>
+                      )}
                     </span>
-                    <button type="button" className="surface-btn surface-btn--sm surface-btn--quiet" aria-label={`test ${secret.id}`} onClick={() => testSecret(secret)}>test</button>
-                    <button type="button" className="surface-btn surface-btn--sm surface-btn--quiet" aria-label={`remove ${secret.id}`} onClick={() => deleteSecret(secret)}>remove</button>
-                  </span>
-                </div>
-              ))}
+                    <span className="surface-row__actions">
+                      <span className={secret.configured ? 'surface-pill surface-pill--ok' : 'surface-pill surface-pill--warn'}>
+                        {secret.configured ? 'configured' : 'missing'}
+                      </span>
+                      <button
+                        type="button"
+                        className="surface-btn surface-btn--sm surface-btn--quiet"
+                        aria-label={`edit allowed hosts for ${secret.id}`}
+                        onClick={() => setHostsEditor(editing ? null : { key: rowKey, value: hosts.join(', ') })}
+                      >
+                        hosts
+                      </button>
+                      <button type="button" className="surface-btn surface-btn--sm surface-btn--quiet" aria-label={`test ${secret.id}`} onClick={() => testSecret(secret)}>test</button>
+                      <button type="button" className="surface-btn surface-btn--sm surface-btn--quiet" aria-label={`remove ${secret.id}`} onClick={() => deleteSecret(secret)}>remove</button>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
       </section>
@@ -153,6 +219,15 @@ export function CredentialsTab({ services, setNotice }: CredentialsTabProps) {
                 <option value="user">global</option>
                 <option value="project">project</option>
               </select>
+            </label>
+            <label className="surface-field">
+              <span>allowed hosts</span>
+              <input
+                className="surface-input"
+                value={secretHosts}
+                placeholder="api.github.com, *.example.com"
+                onChange={(event) => setSecretHosts(event.target.value)}
+              />
             </label>
           </div>
           <div className="credentials-form__value">

@@ -8,7 +8,7 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
-use crate::broker_security::{broker_token, MAX_BROKER_BODY_BYTES};
+use crate::broker_security::{broker_token, token_matches, MAX_BROKER_BODY_BYTES};
 
 #[derive(Clone, Default)]
 pub struct HostBroker {
@@ -145,7 +145,7 @@ fn handle_stream(
             if key.eq_ignore_ascii_case("content-length") {
                 content_length = value.trim().parse::<usize>().unwrap_or(0);
             }
-            if key.eq_ignore_ascii_case("x-polypore-token") && value.trim() == token {
+            if key.eq_ignore_ascii_case("x-polypore-token") && token_matches(value.trim(), token) {
                 authed = true;
             }
         }
@@ -236,6 +236,7 @@ fn is_host_rpc_method_allowed(method: &str) -> bool {
             | "diagnostics.list"
             | "verify.run"
             | "verify.runs"
+            | "knowledge.bases"
             | "knowledge.list"
             | "knowledge.read"
             | "knowledge.write"
@@ -334,6 +335,7 @@ mod tests {
         assert!(is_host_rpc_method_allowed("editor.read"));
         assert!(is_host_rpc_method_allowed("editor.search"));
         assert!(is_host_rpc_method_allowed("tasks.update"));
+        assert!(is_host_rpc_method_allowed("knowledge.bases"));
         assert!(is_host_rpc_method_allowed("knowledge.list"));
         assert!(is_host_rpc_method_allowed("knowledge.handoff"));
         assert!(is_host_rpc_method_allowed("adr.record"));

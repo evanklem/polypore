@@ -88,7 +88,11 @@ export interface PolyporeHost {
   registerManifest(manifest: PanelManifest): Promise<{ registered: boolean; panelId: string }>;
   ui: {
     notify(level: NotifyLevel, msg: string): Promise<{ shown: boolean }>;
-    confirm(msg: string): Promise<{ confirmed: boolean }>;
+    /* confirmLabel names the affirmative action ("delete folder") so
+       destructive confirms don't fall back to a generic "accept"; files
+       lists the paths a destructive action touches so the dialog can show
+       the blast radius. */
+    confirm(msg: string, opts?: { confirmLabel?: string; files?: string[] }): Promise<{ confirmed: boolean }>;
     openExternal(url: string): Promise<{ opened: boolean }>;
     inputBox(opts?: { prompt?: string; placeholder?: string; value?: string }): Promise<{ value: string | null }>;
     quickPick(items: Array<string | QuickPickItem>): Promise<{ selected: string | null }>;
@@ -606,7 +610,11 @@ export function createLoopbackHost(
     registerManifest: (manifest) => call<{ registered: boolean; panelId: string }>('manifest.register', { manifest }),
     ui: {
       notify: (level, msg) => call<{ shown: boolean }>('ui.notify', { level, msg }),
-      confirm: (msg) => call<{ confirmed: boolean }>('ui.confirm', { msg }),
+      confirm: (msg, opts) => call<{ confirmed: boolean }>('ui.confirm', {
+        msg,
+        ...(opts?.confirmLabel ? { confirmLabel: opts.confirmLabel } : {}),
+        ...(opts?.files ? { files: opts.files } : {}),
+      }),
       openExternal: (url) => call<{ opened: boolean }>('ui.openExternal', { url }),
       inputBox: (opts) => call<{ value: string | null }>('ui.inputBox', opts ?? {}),
       quickPick: (items) => call<{ selected: string | null }>('ui.quickPick', { items }),

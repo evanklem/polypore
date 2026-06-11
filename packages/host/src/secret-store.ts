@@ -96,11 +96,14 @@ type StorageLike = {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+  readonly length?: number;
+  key?(index: number): string | null;
 };
 
-/* localStorage-backed store. plaintext values still live in the renderer's
-   per-origin localStorage — fine for the renderer-only M4 milestone where
-   no native shell exists, replaced by a keyring binding once Tauri lands. */
+/* localStorage-backed store. plaintext values live in the renderer's
+   per-origin localStorage — browser-preview only, where no native shell
+   exists. the desktop shell uses createMetadataSecretStore instead so
+   values stay exclusively in the OS keyring. */
 export function createLocalStorageSecretStore(storage: StorageLike): SecretStore {
   const memory = createMemorySecretStore();
 
@@ -158,14 +161,104 @@ export function createLocalStorageSecretStore(storage: StorageLike): SecretStore
   };
 }
 
-/* Parse a .env file body into entries and load them into the store. Keys
-   already present are not overwritten (manual entries win over .env discovery).
-   Returns the list of newly-loaded handles. Tolerant of common .env quirks:
-   blank lines, # comments, KEY=VALUE, KEY="VALUE", KEY='VALUE', export prefix. */
-export function loadDotEnvIntoStore(body: string, store: SecretStore, opts?: { scope?: 'user' | 'project'; service?: string }): string[] {
-  const scope = opts?.scope ?? 'project';
-  const service = opts?.service;
-  const loaded: string[] = [];
+/* metadata-only store for the desktop shell. values live exclusively in the
+   OS keyring (reached through the Tauri secrets_* commands); the renderer
+   keeps just the masked index so list/has stay synchronous. set() discards
+   the plaintext after computing the hint, reveal() always misses, and any
+   plaintext value keys a pre-keyring build left in storage are purged on
+   startup. */
+export function createMetadataSecretStore(storage: StorageLike): SecretStore {
+  const meta = new Map<string, { id: string; scope: 'user' | 'project'; service: string; hint: string; updatedAt: number }>();
+  const listeners = new Set<() => void>();
+
+  const notify = () => {
+    for (const fn of [...listeners]) {
+      try { fn(); } catch {}
+    }
+  };
+
+  const persistIndex = () => {
+    try {
+      storage.setItem(`${POLYPORE_SECRET_PREFIX}index`, JSON.stringify([...meta.values()]));
+    } catch {}
+  };
+
+  /* purge plaintext values persisted by the localStorage store before the
+     keyring became the value store. */
+  try {
+    if (typeof storage.length === 'number' && storage.key) {
+      const stale: string[] = [];
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (key && key.startsWith(`${POLYPORE_SECRET_PREFIX}value.`)) stale.push(key);
+      }
+      for (const key of stale) storage.removeItem(key);
+    }
+  } catch {}
+
+  try {
+    const raw = storage.getItem(`${POLYPORE_SECRET_PREFIX}index`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Array<{ id: string; scope: 'user' | 'project'; service: string; hint: string; updatedAt: number }>;
+      for (const item of parsed) {
+        if (!item || typeof item.id !== 'string') continue;
+        meta.set(scopedKey(item.id, item.scope), { ...item });
+      }
+    }
+  } catch {
+    /* corrupt index falls back to empty state */
+  }
+
+  return {
+    list(scope) {
+      const items = [...meta.values()].map(entryFromMeta);
+      return scope ? items.filter((entry) => entry.scope === scope) : items;
+    },
+    has(id, scope) {
+      if (scope) return meta.has(scopedKey(id, scope));
+      return meta.has(scopedKey(id, 'user')) || meta.has(scopedKey(id, 'project'));
+    },
+    set({ id, value, scope = 'user', service }) {
+      const next = {
+        id,
+        scope,
+        service: service ?? id.split('-')[0] ?? id,
+        hint: mask(value),
+        updatedAt: Date.now(),
+      };
+      meta.set(scopedKey(id, scope), next);
+      persistIndex();
+      notify();
+      return entryFromMeta(next);
+    },
+    delete(id, scope) {
+      const scopes = scope ? [scope] : (['user', 'project'] as const);
+      let had = false;
+      for (const itemScope of scopes) {
+        had = meta.delete(scopedKey(id, itemScope)) || had;
+      }
+      if (had) {
+        persistIndex();
+        notify();
+      }
+      return had;
+    },
+    reveal: () => null,
+    onChange(listener) {
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+  };
+}
+
+export type DotEnvEntry = { key: string; id: string; value: string };
+
+/* Parse a .env file body into entries. Tolerant of common .env quirks:
+   blank lines, # comments, KEY=VALUE, KEY="VALUE", KEY='VALUE', export
+   prefix. polypore handles are kebab-case; the original env-var name is
+   preserved alongside so the scrubbed env can re-emit it as a handle. */
+export function parseDotEnv(body: string): DotEnvEntry[] {
+  const entries: DotEnvEntry[] = [];
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith('#')) continue;
@@ -178,10 +271,20 @@ export function loadDotEnvIntoStore(body: string, store: SecretStore, opts?: { s
       value = value.slice(1, -1);
     }
     if (!key || !value) continue;
-    const id = key.toLowerCase().replace(/_/g, '-');
+    entries.push({ key, id: key.toLowerCase().replace(/_/g, '-'), value });
+  }
+  return entries;
+}
+
+/* Load .env entries into the store. Keys already present are not overwritten
+   (manual entries win over .env discovery). Returns the list of newly-loaded
+   handles. browser-preview only — the desktop shell seeds the keyring. */
+export function loadDotEnvIntoStore(body: string, store: SecretStore, opts?: { scope?: 'user' | 'project'; service?: string }): string[] {
+  const scope = opts?.scope ?? 'project';
+  const service = opts?.service;
+  const loaded: string[] = [];
+  for (const { key, id, value } of parseDotEnv(body)) {
     if (store.has(id, scope) || store.has(id)) continue;
-    /* polypore handles are kebab-case; the original env-var name is preserved
-       in the service field so the scrubbed env can re-emit it as a handle. */
     store.set({ id, value, scope, service: service ?? key });
     loaded.push(key);
   }

@@ -766,7 +766,11 @@ export function MemoryPanel({ header, host, context }: BuiltinPluginProps) {
   const memCtxDeleteFolder = async (folderPath: string) => {
     setMemCtxMenu(null);
     if (!selectedBase) return;
-    const { confirmed } = await host.ui.confirm(`delete folder "${folderPath.split('/').pop()}" and all its documents?`);
+    const folderDocs = [...allDocsContent.keys()].filter((path) => path === folderPath || path.startsWith(`${folderPath}/`));
+    const { confirmed } = await host.ui.confirm(
+      `delete folder "${folderPath.split('/').pop()}" and all its documents?`,
+      { confirmLabel: 'delete folder', files: folderDocs },
+    );
     if (!confirmed) return;
     try {
       await host.knowledge.deleteFolder(folderPath, selectedBase.id);
@@ -779,7 +783,7 @@ export function MemoryPanel({ header, host, context }: BuiltinPluginProps) {
   const memCtxDeleteDoc = async (path: string) => {
     setMemCtxMenu(null);
     if (!selectedBase) return;
-    const { confirmed } = await host.ui.confirm(`delete "${path.split('/').pop()}"?`);
+    const { confirmed } = await host.ui.confirm(`delete "${path.split('/').pop()}"?`, { confirmLabel: 'delete document' });
     if (!confirmed) return;
     try {
       await host.knowledge.deleteDoc(path, selectedBase.id);

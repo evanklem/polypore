@@ -18,14 +18,14 @@ export type ProjectStatusResult = {
 export type GitRunResult = {
   action: string;
   command: string[];
-  exit_code?: number | null;
+  exitCode?: number | null;
   output: string;
 };
 
 export type RecentProject = {
   path: string;
   name: string;
-  last_opened: number;
+  lastOpened: number;
   exists: boolean;
 };
 
@@ -37,6 +37,8 @@ export type NativeSecretRef = {
   configured: boolean;
   createdAt?: number;
   lastUsedAt?: number | null;
+  /* hosts secrets.use may deliver this secret to; empty means refused. */
+  allowedHosts?: string[] | null;
 };
 
 export type AgentBinaryStatus = {

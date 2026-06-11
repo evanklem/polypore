@@ -5,7 +5,7 @@ use std::thread;
 
 use serde::Deserialize;
 
-use crate::broker_security::{broker_token, MAX_BROKER_BODY_BYTES};
+use crate::broker_security::{broker_token, token_matches, MAX_BROKER_BODY_BYTES};
 use crate::secrets::{self, SecretUseRequest};
 
 #[derive(Default)]
@@ -107,7 +107,7 @@ fn handle_stream(mut stream: TcpStream, token: &str) -> Result<(), String> {
             if key.eq_ignore_ascii_case("content-length") {
                 content_length = value.trim().parse::<usize>().unwrap_or(0);
             }
-            if key.eq_ignore_ascii_case("x-polypore-token") && value.trim() == token {
+            if key.eq_ignore_ascii_case("x-polypore-token") && token_matches(value.trim(), token) {
                 authed = true;
             }
         }

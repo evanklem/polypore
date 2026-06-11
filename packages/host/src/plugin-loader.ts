@@ -28,6 +28,10 @@ export type PluginHandle = {
   ready: Promise<void>;
 };
 
+/* monotonic suffix: two mounts in the same millisecond must not share an
+   instance id. */
+let instanceSeq = 0;
+
 export class PluginLoader {
   private plugins = new Map<string, BuiltinPluginDefinition>();
 
@@ -63,7 +67,7 @@ export class PluginLoader {
      uses to wait for handshake and to tear down the bridge when the panel
      closes. */
   mount(opts: MountOptions): PluginHandle {
-    const instanceId = opts.instanceId ?? `inst-${opts.manifest.id}-${Date.now()}`;
+    const instanceId = opts.instanceId ?? `inst-${opts.manifest.id}-${++instanceSeq}`;
     const subs = new Map<string, () => void>();
     const grantedPermissions = new Set(opts.manifest.permissions ?? []);
     let readyResolve: () => void = () => {};

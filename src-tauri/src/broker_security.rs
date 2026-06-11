@@ -9,6 +9,21 @@ pub fn broker_token(prefix: &str) -> Result<String, String> {
     Ok(format!("{prefix}-{}", hex_bytes(&bytes)))
 }
 
+/// Constant-time token equality so the comparison can't serve as a timing
+/// oracle against the broker bearer token.
+pub fn token_matches(candidate: &str, token: &str) -> bool {
+    let candidate = candidate.as_bytes();
+    let token = token.as_bytes();
+    if candidate.len() != token.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (a, b) in candidate.iter().zip(token.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
+
 fn hex_bytes(bytes: &[u8]) -> String {
     let mut encoded = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
@@ -20,6 +35,14 @@ fn hex_bytes(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_matches_compares_exactly() {
+        assert!(token_matches("abc-123", "abc-123"));
+        assert!(!token_matches("abc-124", "abc-123"));
+        assert!(!token_matches("abc-12", "abc-123"));
+        assert!(!token_matches("", "abc-123"));
+    }
 
     #[test]
     fn broker_tokens_use_random_bytes() {

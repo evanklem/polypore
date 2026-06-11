@@ -1,4 +1,5 @@
 import type { FileNode } from '../shared';
+import { dockviewApi } from '../../src/core/polypore-window';
 
 export type ContextDocState = 'loaded' | 'compacted' | 'queued';
 
@@ -354,14 +355,10 @@ export function chatTargetsFromState(value: unknown): ChatTarget[] {
 }
 
 export function chatTargetsFromDockview(): ChatTarget[] {
-  const dock = (window as Window & {
-    __polyporeDockview?: {
-      listPanels?: () => Array<{ id: string; slot: string; title?: string }>;
-    };
-  }).__polyporeDockview;
+  const dock = dockviewApi();
   let panels: Array<{ id: string; slot: string; title?: string }> = [];
   try {
-    panels = dock?.listPanels?.() ?? [];
+    panels = dock?.listPanels() ?? [];
   } catch {
     panels = [];
   }
