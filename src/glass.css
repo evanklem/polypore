@@ -877,6 +877,153 @@ body[data-dv-resizing] .panel-header {
   color: var(--ink);
 }
 
+/* gear at the right end of the strip opens the favorites editor; the
+   strip itself is position:relative so the popover anchors under it. */
+.terminal-quicklaunch {
+  position: relative;
+}
+.terminal-quicklaunch__edit {
+  height: 24px;
+  width: 24px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms var(--hg-ease), border-color 120ms var(--hg-ease);
+}
+.terminal-quicklaunch__edit:hover,
+.terminal-quicklaunch__edit[aria-expanded='true'] {
+  border-color: var(--hg-glass-edge);
+  background: var(--accent-08);
+  color: var(--ink);
+}
+.terminal-quicklaunch__editor {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 8px;
+  z-index: 6;
+  width: 280px;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--hg-glass-edge-strong);
+  border-radius: var(--hg-radius);
+  background: rgba(var(--c-surface-3-rgb), 0.96);
+  box-shadow: var(--hg-shadow);
+  backdrop-filter: var(--hg-blur);
+  -webkit-backdrop-filter: var(--hg-blur);
+}
+.terminal-quicklaunch__editor header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.terminal-quicklaunch__editor header strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-family: var(--mono);
+}
+.terminal-quicklaunch__editor header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.terminal-quicklaunch__editor-rows {
+  display: grid;
+  gap: 2px;
+  max-height: 180px;
+  overflow: auto;
+}
+.terminal-quicklaunch__editor-rows em {
+  color: var(--muted);
+  font-size: 11px;
+}
+.terminal-quicklaunch__editor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: var(--r-inset);
+}
+.terminal-quicklaunch__editor-row:hover {
+  background: var(--accent-08);
+}
+.terminal-quicklaunch__editor-row code {
+  color: var(--ink);
+  font-size: 11px;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal-quicklaunch__editor-row button {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-inset);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.terminal-quicklaunch__editor-row button:hover {
+  background: var(--accent-12);
+  color: var(--ink);
+}
+.terminal-quicklaunch__editor-add {
+  display: flex;
+  gap: 6px;
+}
+.terminal-quicklaunch__editor-add input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--shadow-28);
+  color: var(--ink);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.terminal-quicklaunch__editor-add button,
+.terminal-quicklaunch__editor footer button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--hg-glass-edge);
+  border-radius: var(--r-control);
+  background: var(--accent-04);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--mono);
+}
+.terminal-quicklaunch__editor-add button:hover:not(:disabled),
+.terminal-quicklaunch__editor footer button:hover {
+  border-color: var(--hg-accent);
+  background: var(--accent-12);
+  color: var(--ink);
+}
+.terminal-quicklaunch__editor-add button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.terminal-quicklaunch__editor footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
 
 /* ===== 8. chat slash popover ========================================= */
 

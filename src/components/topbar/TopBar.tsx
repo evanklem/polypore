@@ -54,10 +54,31 @@ export function TopBar({
 
   useEffect(() => {
     let cancelled = false;
-    tauriInvoke<ProjectStatusResult>('project_status')?.then((next) => {
-      if (!cancelled) setStatus(next);
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    const refresh = () => {
+      tauriInvoke<ProjectStatusResult>('project_status')?.then((next) => {
+        if (!cancelled) setStatus(next);
+      }).catch(() => {});
+    };
+    refresh();
+    /* the repo changes from outside this UI too — a terminal `git checkout`,
+       an agent running git in an embedded pty, an external editor dirtying
+       files. refresh whenever the window regains focus and on a slow poll
+       while visible so the branch/dirty segment tracks reality. */
+    const onFocus = () => refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') refresh();
+    }, 10_000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.clearInterval(poll);
+    };
   }, [projectVersion, tauriInvoke]);
 
   const toggle = (menu: Exclude<OpenMenu, null>) => () => {

@@ -33,7 +33,7 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
       if (!result) throw new Error('desktop shell is not available');
       const next = await tauriInvoke<ProjectStatusResult>('project_status');
       if (next) onStatusChange(next);
-      const text = result.output.trim() || `git ${result.command.join(' ')} exited ${result.exit_code ?? 0}`;
+      const text = result.output.trim() || `git ${result.command.join(' ')} exited ${result.exitCode ?? 0}`;
       setOutput(text);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

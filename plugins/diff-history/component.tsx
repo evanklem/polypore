@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { GitDiffResult } from '../../packages/sdk/src/host';
 import type { BuiltinPluginProps } from '../shared';
 import { PanelHeader, ResizeHandle, scheduleAfterPaint, useResizableSplit } from '../shared';
@@ -97,6 +97,8 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [compareMode, setCompareMode] = useState<CompareMode>('working');
   const [compareOpen, setCompareOpen] = useState(false);
+  const compareButtonRef = useRef<HTMLButtonElement>(null);
+  const compareMenuRef = useRef<HTMLDivElement>(null);
   const [openNotice, setOpenNotice] = useState('');
   const [compareNotice, setCompareNotice] = useState('');
 
@@ -121,6 +123,56 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
     setCompareMode(nextMode);
     setCompareNotice('');
     setCompareOpen(false);
+    compareButtonRef.current?.focus();
+  };
+
+  useEffect(() => {
+    if (!compareOpen) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (compareMenuRef.current?.contains(target)) return;
+      if (compareButtonRef.current?.contains(target)) return;
+      setCompareOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    /* focus the active mode so the menu is keyboard-reachable as soon as it
+       opens; the trigger keeps focus otherwise and arrows would be dead. */
+    const items = compareMenuRef.current?.querySelectorAll<HTMLElement>('.diff-compare-popover__item');
+    const checked = compareMenuRef.current?.querySelector<HTMLElement>('.diff-compare-popover__item[aria-checked="true"]');
+    (checked ?? items?.[0])?.focus();
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [compareOpen]);
+
+  const onCompareMenuKeyDown = (event: React.KeyboardEvent) => {
+    const items = compareMenuRef.current
+      ? [...compareMenuRef.current.querySelectorAll<HTMLElement>('.diff-compare-popover__item')]
+      : [];
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    switch (event.key) {
+      case 'Escape':
+        event.preventDefault();
+        setCompareOpen(false);
+        compareButtonRef.current?.focus();
+        break;
+      case 'ArrowDown':
+        event.preventDefault();
+        items[(index + 1) % items.length]?.focus();
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length]?.focus();
+        break;
+      case 'Home':
+        event.preventDefault();
+        items[0]?.focus();
+        break;
+      case 'End':
+        event.preventDefault();
+        items[items.length - 1]?.focus();
+        break;
+      default:
+        break;
+    }
   };
 
   useEffect(() => {
@@ -219,7 +271,6 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   className={file === activeFile ? 'diff-files__entry diff-files__entry--active' : 'diff-files__entry'}
                   onClick={() => setSelectedFile(file)}
                 >
-                  <i className="diff-files__status">diff</i>
                   <span>{file}</span>
                   <em>tracked diff</em>
                 </button>
@@ -249,19 +300,35 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
               >
                 open in editor
               </button>
-              <button onClick={() => setCompareOpen((open) => !open)}>compare</button>
+              <button
+                type="button"
+                ref={compareButtonRef}
+                aria-expanded={compareOpen}
+                aria-haspopup="menu"
+                onClick={() => setCompareOpen((open) => !open)}
+              >
+                compare
+              </button>
             </div>
           </header>
           {openNotice && <div className="diff-historical-banner"><span>{openNotice}</span></div>}
           {compareNotice && <div className="diff-historical-banner"><span>{compareNotice}</span></div>}
 
           {compareOpen && (
-            <div className="diff-compare-popover" role="dialog" aria-label="compare refs">
+            <div
+              className="diff-compare-popover"
+              ref={compareMenuRef}
+              role="menu"
+              aria-label="compare refs"
+              onKeyDown={onCompareMenuKeyDown}
+            >
               {COMPARE_OPTIONS.map((option) => (
                 <button
                   key={option.mode}
                   type="button"
-                  aria-pressed={compareMode === option.mode}
+                  role="menuitemradio"
+                  className="diff-compare-popover__item"
+                  aria-checked={compareMode === option.mode}
                   onClick={() => applyCompareMode(option.mode)}
                 >
                   <strong>{option.label}</strong>

@@ -6,6 +6,7 @@ import '@xterm/xterm/css/xterm.css';
 import type { BuiltinPluginProps } from '../shared';
 import { PanelHeader, perfPoint } from '../shared';
 import { loadInterfaceSettings } from '../../src/settings/settingsStorage';
+import { onTerminalSend, registerTerminalPanel, unregisterTerminalPanel } from '../../src/core/polypore-window';
 
 function buildTerminalTheme(accentHex: string): Record<string, string> {
   let r = 240, g = 179, b = 90; // honey fallback
@@ -46,45 +47,27 @@ function buildTerminalTheme(accentHex: string): Record<string, string> {
   };
 }
 
-const SHELL_COMMANDS_KEY = 'polypore.terminal.frequentCommands';
-/* slash commands live in per-CLI buckets. claude has its own slash
-   palette (/compact, /init, …); codex has overlapping but distinct
-   commands. tracking separately keeps each agent's chip strip ranked by
-   what the user actually uses with *that* agent. */
-const SLASH_COMMANDS_KEY_PREFIX = 'polypore.terminal.frequentSlashCommands';
+/* quick-launch chips are a user-curated favorites list — the strip never
+   records what gets typed into the terminal. an earlier build ranked chips
+   by capturing submitted command lines, which also captured input typed at
+   no-echo prompts (passwords) and half-finished lines; those stores are
+   purged on load (see purgeCapturedCommandHistory) and nothing like them
+   is written anymore. */
+const FAVORITES_SHELL_KEY = 'polypore.terminal.favoriteCommands';
+const FAVORITES_SLASH_KEY_PREFIX = 'polypore.terminal.favoriteSlashCommands';
 const AGENT_CLI_NAMES = new Set(['claude', 'codex']);
 const SHELL_DEFAULT_QUICK_COMMANDS = ['git status', 'pwd', 'ls'];
 const SLASH_DEFAULT_QUICK_COMMANDS = ['/clear', '/help'];
-/* shells rarely have command lines longer than this; anything past it is
-   almost certainly a paragraph someone pasted into an agent CLI which we
-   shouldn't be capturing as a "frequent command" anyway. */
-const MAX_REMEMBERED_COMMAND_LENGTH = 80;
-const SLASH_COMMAND_RE = /^(\/[A-Za-z][\w\-:.]*)/;
+const MAX_QUICK_COMMANDS = 12;
+const MAX_QUICK_COMMAND_LENGTH = 120;
 
 function storageKeyFor(agent: string) {
-  return agent ? `${SLASH_COMMANDS_KEY_PREFIX}.${agent}` : SHELL_COMMANDS_KEY;
+  return agent ? `${FAVORITES_SLASH_KEY_PREFIX}.${agent}` : FAVORITES_SHELL_KEY;
 }
 
 function defaultsFor(agent: string) {
   return agent ? SLASH_DEFAULT_QUICK_COMMANDS : SHELL_DEFAULT_QUICK_COMMANDS;
 }
-
-/* pulls the leading /token out of arbitrary user input. used to filter
-   what we record on agent-CLI terminals so prose typed at claude doesn't
-   leak into the chip strip. returns null when the input isn't a slash
-   command. */
-function extractSlashCommand(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('/')) return null;
-  const match = trimmed.match(SLASH_COMMAND_RE);
-  return match ? match[1] : null;
-}
-
-type FrequentCommand = {
-  command: string;
-  count: number;
-  lastUsed: number;
-};
 
 type TerminalContextStats = {
   panelId: string;
@@ -113,128 +96,59 @@ function terminalPayloadTextLength(value: string) {
     .length;
 }
 
-function readFrequentCommands(key: string): FrequentCommand[] {
+function readFavoriteCommands(key: string, defaults: readonly string[]): string[] {
   try {
     const raw = window.localStorage.getItem(key);
-    if (!raw) return [];
-    const rows = JSON.parse(raw) as FrequentCommand[];
-    /* the shell bucket should never contain /slash entries — those belong
-       to the agent CLI bucket. drop them on read so the shell chip strip
-       stays clean even if older builds wrote them in. */
-    const isShellBucket = key === SHELL_COMMANDS_KEY;
+    /* absent key → the user never customized this context; show defaults.
+       an explicit empty array means they removed everything — respect it. */
+    if (raw === null) return [...defaults];
+    const rows = JSON.parse(raw);
+    if (!Array.isArray(rows)) return [...defaults];
     return rows
-      .filter((row) => row && typeof row.command === 'string' && Number.isFinite(row.count))
-      .map((row) => ({
-        command: normalizeCommand(row.command),
-        count: Math.max(1, Math.floor(row.count)),
-        lastUsed: Number.isFinite(row.lastUsed) ? row.lastUsed : 0,
-      }))
-      .filter((row) => row.command.length > 0 && row.command.length <= MAX_REMEMBERED_COMMAND_LENGTH)
-      .filter((row) => (isShellBucket ? !row.command.startsWith('/') : row.command.startsWith('/')))
-      .sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed || a.command.localeCompare(b.command))
-      .slice(0, 20);
+      .filter((row): row is string => typeof row === 'string')
+      .map((row) => normalizeCommand(row))
+      .filter((row, index, all) => row.length > 0 && row.length <= MAX_QUICK_COMMAND_LENGTH && all.indexOf(row) === index)
+      .slice(0, MAX_QUICK_COMMANDS);
   } catch {
-    return [];
+    return [...defaults];
   }
 }
 
-function writeFrequentCommands(key: string, rows: FrequentCommand[]) {
+function writeFavoriteCommands(key: string, rows: string[]) {
   try {
-    window.localStorage.setItem(key, JSON.stringify(rows.slice(0, 20)));
+    window.localStorage.setItem(key, JSON.stringify(rows.slice(0, MAX_QUICK_COMMANDS)));
   } catch {
     /* localStorage can be unavailable in restricted browser contexts. */
   }
 }
 
-/* one-time migration: older builds tracked everything (shell commands +
-   slash commands + prose) into the shell bucket, and a brief earlier
-   pass put slash commands into a single shared bucket. relift any
-   /slash entries out of those legacy stores and into the per-agent
-   buckets (we don't know which agent each was originally typed at, so
-   seed both), then clean the shell bucket so the chip strip reflects
-   the new model. */
-const LEGACY_SHARED_SLASH_KEY = 'polypore.terminal.frequentSlashCommands';
-const SLASH_AGENT_BUCKETS = ['claude', 'codex'] as const;
-let migrationDone = false;
+/* one-time cleanup: older builds captured submitted command lines (with
+   their count/lastUsed ranking) into these keys. that capture path also
+   recorded input typed at no-echo prompts — i.e. passwords — so the
+   stores are deleted outright rather than migrated. */
+const LEGACY_CAPTURED_KEYS = [
+  'polypore.terminal.frequentCommands',
+  'polypore.terminal.frequentSlashCommands',
+  'polypore.terminal.frequentSlashCommands.claude',
+  'polypore.terminal.frequentSlashCommands.codex',
+];
+let purgeDone = false;
 
-function mergeSlashEntries(target: FrequentCommand[], rows: FrequentCommand[]) {
-  for (const row of rows) {
-    if (!row || typeof row.command !== 'string') continue;
-    const slash = extractSlashCommand(normalizeCommand(row.command));
-    if (!slash) continue;
-    const existing = target.find((entry) => entry.command === slash);
-    const count = Math.max(1, Math.floor(Number.isFinite(row.count) ? row.count : 1));
-    const lastUsed = Number.isFinite(row.lastUsed) ? row.lastUsed : 0;
-    if (existing) {
-      existing.count += count;
-      existing.lastUsed = Math.max(existing.lastUsed, lastUsed);
-    } else {
-      target.push({ command: slash, count, lastUsed });
-    }
-  }
-}
-
-function migrateLegacyEntries() {
-  if (migrationDone) return;
-  migrationDone = true;
+function purgeCapturedCommandHistory() {
+  if (purgeDone) return;
+  purgeDone = true;
   try {
-    const seed: FrequentCommand[] = [];
-    let seedDirty = false;
-
-    const shellRaw = window.localStorage.getItem(SHELL_COMMANDS_KEY);
-    if (shellRaw) {
-      const rows = JSON.parse(shellRaw);
-      if (Array.isArray(rows)) {
-        const slashFromShell = rows.filter(
-          (row) => row && typeof row.command === 'string' && row.command.trim().startsWith('/'),
-        );
-        if (slashFromShell.length > 0) {
-          mergeSlashEntries(seed, slashFromShell);
-          const cleanedShell = rows.filter(
-            (row) => row && typeof row.command === 'string' && !row.command.trim().startsWith('/'),
-          );
-          writeFrequentCommands(SHELL_COMMANDS_KEY, cleanedShell);
-          seedDirty = true;
-        }
+    for (const key of LEGACY_CAPTURED_KEYS) window.localStorage.removeItem(key);
+    /* also catch per-agent buckets for agents beyond claude/codex */
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith('polypore.terminal.frequentSlashCommands.')) {
+        window.localStorage.removeItem(key);
       }
-    }
-
-    const sharedRaw = window.localStorage.getItem(LEGACY_SHARED_SLASH_KEY);
-    if (sharedRaw) {
-      const rows = JSON.parse(sharedRaw);
-      if (Array.isArray(rows)) {
-        mergeSlashEntries(seed, rows);
-        seedDirty = true;
-      }
-      window.localStorage.removeItem(LEGACY_SHARED_SLASH_KEY);
-    }
-
-    if (!seedDirty || seed.length === 0) return;
-
-    /* fan the legacy entries out to every per-agent bucket. we don't
-       know which agent each was originally typed at, and most of the
-       well-known slash commands work in both, so seeding both gives the
-       user a useful baseline. */
-    for (const agent of SLASH_AGENT_BUCKETS) {
-      const key = storageKeyFor(agent);
-      const existing = readFrequentCommands(key);
-      const merged = [...existing];
-      mergeSlashEntries(merged, seed);
-      merged.sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed || a.command.localeCompare(b.command));
-      writeFrequentCommands(key, merged);
     }
   } catch {
-    /* localStorage / JSON failures are non-fatal — old entries just stay
-       put and get filtered on every read instead. */
+    /* localStorage can be unavailable in restricted browser contexts. */
   }
-}
-
-function mergeQuickCommands(rows: FrequentCommand[], defaults: readonly string[]) {
-  const ranked = rows.map((row) => row.command);
-  for (const command of defaults) {
-    if (!ranked.includes(command)) ranked.push(command);
-  }
-  return ranked.slice(0, 10);
 }
 
 /* a real terminal panel.
@@ -280,7 +194,19 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
   const effectiveAgent = initialCommand || dynamicAgent;
   const storageKey = storageKeyFor(effectiveAgent);
   const quickDefaults = defaultsFor(effectiveAgent);
-  const [quickCommands, setQuickCommands] = useState<string[]>(() => mergeQuickCommands(readFrequentCommands(storageKey), quickDefaults));
+  const [quickCommands, setQuickCommands] = useState<string[]>(() => {
+    purgeCapturedCommandHistory();
+    return readFavoriteCommands(storageKey, quickDefaults);
+  });
+  const [editingQuick, setEditingQuick] = useState(false);
+  const [quickDraft, setQuickDraft] = useState('');
+  const quickEditButtonRef = useRef<HTMLButtonElement | null>(null);
+  const quickEditorRef = useRef<HTMLDivElement | null>(null);
+  /* the chip strip swaps between the shell list and the per-agent slash
+     list when the user enters/leaves an agent CLI — re-read on swap. */
+  useEffect(() => {
+    setQuickCommands(readFavoriteCommands(storageKey, defaultsFor(effectiveAgent)));
+  }, [storageKey, effectiveAgent]);
   /* keep a ref to the latest effectiveAgent so callbacks captured by
      term.onData / event listeners (set up once in useEffect) always read
      the current mode rather than a stale render snapshot. */
@@ -378,13 +304,6 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [panelInstanceId]);
 
-  /* when the active CLI changes (either because dynamicAgent flipped, or
-     because focus jumped between agent panels), reload the chip strip
-     from that agent's bucket. */
-  useEffect(() => {
-    migrateLegacyEntries();
-    setQuickCommands(mergeQuickCommands(readFrequentCommands(storageKey), quickDefaults));
-  }, [storageKey, quickDefaults]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -409,56 +328,33 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
     return () => { cancelled = true; };
   }, [host]);
 
-  const rememberCommand = (rawCommand: string) => {
+  /* on a plain shell terminal, flip the chip strip into agent mode the
+     moment the user invokes `claude` / `codex`, and back to shell mode
+     when they submit anything else at a $ prompt. the submitted line is
+     compared against the known CLI names and then dropped — nothing the
+     user types is recorded or displayed (an earlier build persisted these
+     lines for chip ranking, which also captured passwords typed at
+     no-echo prompts). */
+  const noteSubmittedCommand = (rawCommand: string) => {
+    if (initialCommand) return;
     const command = normalizeCommand(rawCommand);
     if (!command) return;
-    /* on a plain shell terminal, flip the chip strip into agent mode the
-       moment the user invokes `claude` / `codex`. flip back to shell
-       mode when the user submits anything else that isn't a slash
-       command (which means they're back at a $ prompt). */
-    if (!initialCommand) {
-      if (AGENT_CLI_NAMES.has(command)) {
-        setDynamicAgent(command);
-      } else if (!command.startsWith('/')) {
-        setDynamicAgent('');
-      }
+    if (AGENT_CLI_NAMES.has(command)) {
+      setDynamicAgent(command);
+    } else if (!command.startsWith('/')) {
+      setDynamicAgent('');
     }
-    const currentAgent = effectiveAgentRef.current;
-    const key = storageKeyFor(currentAgent);
-    const defaults = defaultsFor(currentAgent);
-    /* on agent CLIs (claude, codex, …) we only care about the slash
-       command — anything else is prose the user typed to the agent and
-       shouldn't pollute the chip strip. on plain shells we cap length to
-       drop accidental pastes and reject /slash entries (those belong to
-       the agent's own bucket). */
-    let toStore: string;
-    if (currentAgent) {
-      const slash = extractSlashCommand(command);
-      if (!slash) return;
-      toStore = slash;
-    } else {
-      if (command.length > MAX_REMEMBERED_COMMAND_LENGTH) return;
-      if (command.startsWith('/')) return;
-      toStore = command;
-    }
-    const current = readFrequentCommands(key);
-    const existing = current.find((row) => row.command === toStore);
-    const next = existing
-      ? current.map((row) => row.command === toStore ? { ...row, count: row.count + 1, lastUsed: Date.now() } : row)
-      : [{ command: toStore, count: 1, lastUsed: Date.now() }, ...current];
-    next.sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed || a.command.localeCompare(b.command));
-    writeFrequentCommands(key, next);
-    setQuickCommands(mergeQuickCommands(next, defaults));
   };
 
   const trackTerminalInput = (data: string) => {
     if (!data) return;
     /* Ignore terminal control sequences such as arrows and function keys.
-       We only need a best-effort command line for ranking quick launches. */
+       The reconstructed line exists only in memory, only to detect agent
+       CLI entry/exit for the chip-strip mode flip. */
     if (data.includes('\x1b')) return;
     for (const char of data) {
       if (char === '\r' || char === '\n') {
-        rememberCommand(commandBufferRef.current);
+        noteSubmittedCommand(commandBufferRef.current);
         commandBufferRef.current = '';
       } else if (char === '\x7f' || char === '\b') {
         commandBufferRef.current = commandBufferRef.current.slice(0, -1);
@@ -470,6 +366,35 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
         commandBufferRef.current += char;
       }
     }
+  };
+
+  const addQuickCommand = () => {
+    const command = normalizeCommand(quickDraft);
+    if (!command || command.length > MAX_QUICK_COMMAND_LENGTH) return;
+    setQuickDraft('');
+    setQuickCommands((current) => {
+      if (current.includes(command)) return current;
+      const next = [...current, command].slice(0, MAX_QUICK_COMMANDS);
+      writeFavoriteCommands(storageKey, next);
+      return next;
+    });
+  };
+
+  const removeQuickCommand = (command: string) => {
+    setQuickCommands((current) => {
+      const next = current.filter((row) => row !== command);
+      writeFavoriteCommands(storageKey, next);
+      return next;
+    });
+  };
+
+  const resetQuickCommands = () => {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      /* restricted browser contexts */
+    }
+    setQuickCommands([...quickDefaults]);
   };
 
   useEffect(() => {
@@ -752,7 +677,7 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
   const sendCommand = (text: string) => {
     const id = sessionIdRef.current;
     if (id === null) return;
-    rememberCommand(text);
+    noteSubmittedCommand(text);
     /* paste the command into the running shell and press enter, just
        like a tab-completion or autosuggestion would. */
     host.terminal.write(id, `${text}\r`).catch(() => {});
@@ -761,38 +686,40 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
 
   useEffect(() => {
     if (!panelInstanceId) return undefined;
-    const global = window as Window & { __polyporeTerminalPanels?: Set<string> };
-    const panels = global.__polyporeTerminalPanels ?? new Set<string>();
-    global.__polyporeTerminalPanels = panels;
-    panels.add(panelInstanceId);
+    registerTerminalPanel(panelInstanceId);
     return () => {
-      panels.delete(panelInstanceId);
+      unregisterTerminalPanel(panelInstanceId);
     };
   }, [panelInstanceId]);
 
+  useEffect(() => onTerminalSend((detail) => {
+    if (detail.panelId !== panelInstanceId || typeof detail.text !== 'string') return;
+    const payload = detail.submit === false
+      ? detail.text
+      : `\x1b[200~${detail.text}\x1b[201~\r`;
+    const id = sessionIdRef.current;
+    if (id === null) {
+      pendingWritesRef.current.push(payload);
+      return;
+    }
+    host.terminal.write(id, payload).catch(() => {});
+    termRef.current?.focus();
+  }), [host, panelInstanceId]);
+
+  /* close the quick-command editor on outside pointerdown; focus its input
+     on open so it's immediately typeable. */
   useEffect(() => {
-    const onTerminalSend = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        panelId?: string;
-        text?: string;
-        submit?: boolean;
-      }>).detail;
-      if (!detail || detail.panelId !== panelInstanceId || typeof detail.text !== 'string') return;
-      const payload = detail.submit === false
-        ? detail.text
-        : `\x1b[200~${detail.text}\x1b[201~\r`;
-      const id = sessionIdRef.current;
-      if (id === null) {
-        pendingWritesRef.current.push(payload);
-        return;
-      }
-      rememberCommand(detail.text);
-      host.terminal.write(id, payload).catch(() => {});
-      termRef.current?.focus();
+    if (!editingQuick) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (quickEditorRef.current?.contains(target)) return;
+      if (quickEditButtonRef.current?.contains(target)) return;
+      setEditingQuick(false);
     };
-    window.addEventListener('polypore:terminal-send', onTerminalSend);
-    return () => window.removeEventListener('polypore:terminal-send', onTerminalSend);
-  }, [host, panelInstanceId]);
+    document.addEventListener('pointerdown', handlePointerDown);
+    quickEditorRef.current?.querySelector<HTMLInputElement>('input')?.focus();
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [editingQuick]);
 
   return (
     <div className="terminal-shell">
@@ -814,6 +741,75 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
               {cmd}
             </button>
           ))}
+          <button
+            type="button"
+            ref={quickEditButtonRef}
+            className="terminal-quicklaunch__edit"
+            aria-label="edit quick commands"
+            aria-expanded={editingQuick}
+            aria-haspopup="dialog"
+            title="edit quick commands"
+            onClick={() => setEditingQuick((open) => !open)}
+          >
+            <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+          {editingQuick && (
+            <div
+              className="terminal-quicklaunch__editor"
+              ref={quickEditorRef}
+              role="dialog"
+              aria-label="quick commands"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  setEditingQuick(false);
+                  quickEditButtonRef.current?.focus();
+                }
+              }}
+            >
+              <header>
+                <strong>quick commands</strong>
+                <span>{effectiveAgent ? `${effectiveAgent} chat` : 'shell'}</span>
+              </header>
+              <div className="terminal-quicklaunch__editor-rows">
+                {quickCommands.length === 0 && <em>no quick commands — add one below</em>}
+                {quickCommands.map((cmd) => (
+                  <div key={cmd} className="terminal-quicklaunch__editor-row">
+                    <code>{cmd}</code>
+                    <button
+                      type="button"
+                      aria-label={`remove ${cmd}`}
+                      onClick={() => removeQuickCommand(cmd)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <form
+                className="terminal-quicklaunch__editor-add"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  addQuickCommand();
+                }}
+              >
+                <input
+                  value={quickDraft}
+                  onChange={(event) => setQuickDraft(event.target.value)}
+                  placeholder={effectiveAgent ? '/command' : 'command'}
+                  aria-label="new quick command"
+                  maxLength={MAX_QUICK_COMMAND_LENGTH}
+                />
+                <button type="submit" disabled={!quickDraft.trim()}>add</button>
+              </form>
+              <footer>
+                <button type="button" onClick={resetQuickCommands}>reset to defaults</button>
+              </footer>
+            </div>
+          )}
         </div>
       )}
       <section className="terminal" aria-label={terminalLabel} onClick={() => termRef.current?.focus()}>
