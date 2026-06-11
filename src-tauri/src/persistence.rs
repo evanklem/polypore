@@ -10,6 +10,7 @@ use crate::project_context;
 const VERIFY_OUTPUT_CHAR_CAP: usize = 12_000;
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PersistenceStatus {
     pub database: String,
     pub status: String,
@@ -20,6 +21,7 @@ pub struct PersistenceStatus {
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChatMessageInput {
     pub session_id: String,
     pub project_path: Option<String>,
@@ -31,6 +33,7 @@ pub struct ChatMessageInput {
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerifyRunInput {
     pub id: String,
     pub project_path: Option<String>,
@@ -42,6 +45,7 @@ pub struct VerifyRunInput {
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileSnapshotInput {
     pub task_id: String,
     pub path: String,
@@ -1490,8 +1494,8 @@ mod tests {
             let command = commands
                 .iter()
                 .find(|command| command.id == expected_id)
-                .unwrap_or_else(|| panic!("missing {expected_id}"));
-            assert_eq!(command.command, expected_command);
+                .unwrap_or_else(|| panic!("case {name}: missing {expected_id}"));
+            assert_eq!(command.command, expected_command, "case {name}");
         }
 
         fs::remove_dir_all(&root).ok();

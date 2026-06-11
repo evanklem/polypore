@@ -15,6 +15,7 @@ pub struct IterateCommand {
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IterateRunInput {
     pub task_id: String,
     pub prompt: String,
@@ -24,6 +25,7 @@ pub struct IterateRunInput {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IterateVerifyRun {
     pub id: String,
     pub label: String,
@@ -34,6 +36,7 @@ pub struct IterateVerifyRun {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IterateRunResult {
     pub task_id: String,
     pub status: String,
@@ -44,6 +47,7 @@ pub struct IterateRunResult {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct IterateStatus {
     pub task_id: String,
     pub status: String,

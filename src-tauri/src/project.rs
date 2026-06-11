@@ -18,6 +18,7 @@ it also needs an agent-binary probe so the launcher can tell the user
 whether `claude` / `codex` will actually answer once they enter the IDE. */
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RecentProject {
     pub path: String,
     pub name: String,
@@ -42,6 +43,7 @@ pub struct ProjectStatus {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitRunResult {
     pub action: String,
     pub command: Vec<String>,
@@ -50,6 +52,7 @@ pub struct GitRunResult {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitDiffResult {
     pub mode: String,
     pub file: Option<String>,
@@ -61,6 +64,7 @@ pub struct GitDiffResult {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitWorktreeResult {
     pub id: String,
     pub path: String,
@@ -71,6 +75,7 @@ pub struct GitWorktreeResult {
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitRevertResult {
     pub files: Vec<String>,
     pub output: String,

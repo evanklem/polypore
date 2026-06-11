@@ -85,10 +85,15 @@ function readBrowserRecents(): RecentProject[] {
   try {
     const raw = window.localStorage.getItem(BROWSER_RECENTS_KEY);
     if (!raw) return [];
-    const rows = JSON.parse(raw) as RecentProject[];
+    /* rows stored before the camelCase wire unification carry last_opened */
+    const rows = JSON.parse(raw) as Array<RecentProject & { last_opened?: number }>;
     return rows
       .filter((row) => row.path && row.name)
-      .map((row) => ({ ...row, exists: browserProjectStore().has(row.path) || row.exists }))
+      .map(({ last_opened, ...row }) => ({
+        ...row,
+        lastOpened: row.lastOpened ?? last_opened ?? 0,
+        exists: browserProjectStore().has(row.path) || row.exists,
+      }))
       .slice(0, 24);
   } catch {
     return [];
@@ -110,7 +115,7 @@ function rememberBrowserProject(handle: BrowserDirectoryHandle): LaunchTarget {
   const next: RecentProject = {
     path,
     name: handle.name || 'project',
-    last_opened: Date.now(),
+    lastOpened: Date.now(),
     exists: true,
   };
   writeBrowserRecents([next, ...readBrowserRecents().filter((row) => row.path !== path)]);
@@ -148,7 +153,7 @@ export type LaunchTarget = { path: string; name: string };
 type RecentProject = {
   path: string;
   name: string;
-  last_opened: number;
+  lastOpened: number;
   exists: boolean;
 };
 
@@ -242,7 +247,7 @@ function groupRecents(recents: RecentProject[]): RecentGroup[] {
       missing.push(row);
       continue;
     }
-    const age = now - row.last_opened;
+    const age = now - row.lastOpened;
     if (age < dayMs) today.push(row);
     else if (age < 7 * dayMs) week.push(row);
     else if (age < 30 * dayMs) month.push(row);
@@ -309,6 +314,11 @@ export function Launcher({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(initialMode === 'new');
+  /* on the desktop shell the recents/templates arrive async; rendering the
+     picker before they land flashes an empty "no recent projects" skeleton
+     on boot. hold the loading screen until the fetch settles. browser mode
+     reads localStorage synchronously, so it's ready on first render. */
+  const [ready, setReady] = useState(!desktopShellAvailable);
 
   useEffect(() => {
     if (!desktopShellAvailable) return;
@@ -324,6 +334,8 @@ export function Launcher({
         setTemplates(templateRes);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) setReady(true);
       }
     };
     void load();
@@ -354,7 +366,7 @@ export function Launcher({
       }
       const next = {
         ...browserProject,
-        last_opened: Date.now(),
+        lastOpened: Date.now(),
         exists: browserProjectStore().has(path) || browserProject.exists,
       };
       writeBrowserRecents([next, ...readBrowserRecents().filter((row) => row.path !== path)]);
@@ -406,6 +418,10 @@ export function Launcher({
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  if (!ready) {
+    return <PolyporeLoadingScreen />;
+  }
 
   if (showNew) {
     return (
@@ -524,7 +540,7 @@ export function Launcher({
                           <span className="launcher__recent-name">{r.name || 'project'}</span>
                           <span className="launcher__recent-path">{shortenPath(r.path)}</span>
                           <span className="launcher__recent-meta">
-                            {r.exists ? formatTimestamp(r.last_opened) : 'missing'}
+                            {r.exists ? formatTimestamp(r.lastOpened) : 'missing'}
                           </span>
                         </button>
                         <button
