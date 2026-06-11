@@ -12,6 +12,13 @@ import type { RpcError, RpcRequest, RpcResponse } from '../../sdk/src/host';
 import { validateRef, validateSchema } from '../../sdk/src/validators.gen';
 import type { ValidationResult } from '../../sdk/src/validators.gen';
 import type { SecretEntry, SecretStore } from './secret-store';
+import type { HostInternals } from './handlers/internals';
+import { registerKnowledgeHandlers } from './handlers/knowledge';
+import { registerSecretsHandlers } from './handlers/secrets';
+import { registerDebugHandlers } from './handlers/debug';
+import { registerPluginsHandlers } from './handlers/plugins';
+import { registerSkillsHandlers } from './handlers/skills';
+import { registerMcpHandlers } from './handlers/mcp';
 
 const PERF_KEY = 'polypore.perf';
 
@@ -46,7 +53,7 @@ export type HostNotification = {
   msg: string;
 };
 
-type RpcHandler = (params: unknown) => Promise<unknown> | unknown;
+export type RpcHandler = (params: unknown) => Promise<unknown> | unknown;
 type EventListener = (payload: unknown) => void;
 const RPC_ERROR_CODES = new Set<RpcError['code']>([
   'permission_not_declared',
@@ -89,7 +96,6 @@ export type StateKey =
   | 'workspace'
   | 'activePanel'
   | 'agentPanels'
-  | 'closedAgentPanel'
   | 'branch'
   | 'contextUsedPct'
   | 'context'
@@ -329,7 +335,7 @@ type BrowserFileHandle = {
   getFile?: () => Promise<{ text: () => Promise<string> }>;
   createWritable?: () => Promise<{ write: (content: string) => Promise<void> | void; close: () => Promise<void> | void }>;
 };
-type BrowserDirectoryHandle = {
+export type BrowserDirectoryHandle = {
   kind: 'directory';
   name: string;
   entries?: () => AsyncIterable<[string, BrowserDirectoryHandle | BrowserFileHandle]>;
@@ -623,10 +629,10 @@ export type DebugDriveRunner = {
     scope?: 'user' | 'project';
   }): Promise<{ ok: boolean }>;
 };
-/* string -> string scrubber applied to evaluate output so debuggee secrets
-   don't leak back through dumps (POLYPORE_AGENT_SCRUBBED). Tauri wires this to
-   secrets_scrub; default is identity. */
-export type DebugScrubber = (text: string) => string;
+/* scrubber applied to evaluate output so debuggee secrets don't leak back
+   through dumps (POLYPORE_AGENT_SCRUBBED). Tauri wires this to secrets_scrub
+   (async, host-side); default is identity. */
+export type DebugScrubber = (text: string) => string | Promise<string>;
 
 /* ─── Extension adapter types ──────────────────────────────────────────── */
 
@@ -1518,8 +1524,14 @@ export class HostRpcServer {
       return { shown: true };
     });
     this.registerHandler('ui.confirm', async (params) => {
-      const { msg } = params as { msg: string };
-      return normalizeConfirmDecision(await this.confirmDecider({ kind: 'generic', message: msg }));
+      const { msg, confirmLabel, files } = params as { msg: string; confirmLabel?: string; files?: string[] };
+      return normalizeConfirmDecision(await this.confirmDecider({
+        kind: 'generic',
+        message: msg,
+        details: confirmLabel || files?.length
+          ? { confirmLabel, files: files?.map((path) => ({ path })) }
+          : undefined,
+      }));
     });
     this.registerHandler('ui.openExternal', async (params) => {
       const { url } = params as { url: string };
@@ -1590,229 +1602,7 @@ export class HostRpcServer {
 
     /* knowledge — project-backed when the shell provides a filesystem adapter,
        otherwise in-memory for renderer-only tests. */
-    this.registerHandler('knowledge.bases', async () => {
-      if (this.knowledgeAdapter?.bases) return { bases: await this.knowledgeAdapter.bases() };
-      if (this.knowledgeBases.length > 0) return { bases: this.knowledgeBases };
-      return { bases: this.knowledge.size > 0 ? [memoryKnowledgeBase()] : [] };
-    });
-    this.registerHandler('knowledge.openFolder', async () => {
-      if (this.knowledgeAdapter?.openFolder) return { base: await this.knowledgeAdapter.openFolder() };
-      const picker = browserDirectoryPicker();
-      if (picker) {
-        const handle = await picker();
-        if (!handle) return { base: null };
-        const base = browserKnowledgeBase(handle);
-        this.browserKnowledgeHandles.set(base.id, handle);
-        this.knowledgeBases = [base, ...this.knowledgeBases.filter((item) => item.id !== base.id)];
-        return { base };
-      }
-      throw new Error('folder picker unavailable');
-    });
-    this.registerHandler('knowledge.suggestBaseLocation', async (params) => {
-      const input = params as { name: string; scope: KnowledgeBaseScope };
-      if (this.knowledgeAdapter?.suggestBaseLocation) {
-        return { location: await this.knowledgeAdapter.suggestBaseLocation(input) };
-      }
-      return { location: `memory://documents/${fileSlug(input.name || 'documents')}` };
-    });
-    this.registerHandler('knowledge.pickBaseLocation', async () => {
-      if (this.knowledgeAdapter?.pickBaseLocation) return await this.knowledgeAdapter.pickBaseLocation();
-      const picker = browserDirectoryPicker();
-      if (!picker) return { location: null };
-      const handle = await picker();
-      if (!handle) return { location: null };
-      const base = browserKnowledgeBase(handle);
-      this.browserKnowledgeHandles.set(base.id, handle);
-      this.knowledgeBases = [base, ...this.knowledgeBases.filter((item) => item.id !== base.id)];
-      return { location: base.root, scope: base.scope };
-    });
-    this.registerHandler('knowledge.createBase', async (params) => {
-      const input = params as {
-        name: string;
-        scope: KnowledgeBaseScope;
-        preset: KnowledgeBasePreset;
-        root?: string;
-        folders?: string[];
-      };
-      if (this.knowledgeAdapter?.createBase) return { base: await this.knowledgeAdapter.createBase(input) };
-      const existing = input.root
-        ? this.knowledgeBases.find((item) => item.root === input.root)
-        : null;
-      if (existing) {
-        const base = {
-          ...existing,
-          name: input.name || existing.name,
-          scope: input.scope,
-        };
-        this.knowledgeBases = [base, ...this.knowledgeBases.filter((item) => item.id !== base.id)];
-        return { base };
-      }
-      const base = {
-        ...memoryKnowledgeBase(),
-        name: input.name || memoryKnowledgeBase().name,
-        root: input.root || memoryKnowledgeBase().root,
-        scope: input.scope,
-        suggestedScope: input.scope,
-      };
-      if (this.knowledge.size === 0) seedMemoryKnowledgePreset(this.knowledge, base.name, input.preset, input.folders);
-      this.knowledgeBases = [base];
-      return { base };
-    });
-    this.registerHandler('knowledge.setBaseScope', async (params) => {
-      const { id, scope } = params as { id: string; scope: KnowledgeBaseScope };
-      if (this.knowledgeAdapter?.setBaseScope) {
-        return { base: await this.knowledgeAdapter.setBaseScope(id, scope) };
-      }
-      const current = this.knowledgeBases.find((base) => base.id === id) ?? memoryKnowledgeBase();
-      const base = { ...current, scope };
-      this.knowledgeBases = [base, ...this.knowledgeBases.filter((item) => item.id !== id)];
-      return { base };
-    });
-    this.registerHandler('knowledge.renameBase', async (params) => {
-      const { id, name } = params as { id: string; name: string };
-      const trimmed = (name ?? '').trim();
-      if (!trimmed) throw new Error('memory base name is required');
-      if (this.knowledgeAdapter?.renameBase) {
-        return { base: await this.knowledgeAdapter.renameBase(id, trimmed) };
-      }
-      const current = this.knowledgeBases.find((base) => base.id === id) ?? memoryKnowledgeBase();
-      const base = { ...current, name: trimmed };
-      this.knowledgeBases = [base, ...this.knowledgeBases.filter((item) => item.id !== id)];
-      return { base };
-    });
-    this.registerHandler('knowledge.deleteBase', async (params) => {
-      const { id } = params as { id: string };
-      if (this.knowledgeAdapter?.deleteBase) {
-        await this.knowledgeAdapter.deleteBase(id);
-        return { deleted: true };
-      }
-      this.knowledgeBases = this.knowledgeBases.filter((item) => item.id !== id);
-      return { deleted: true };
-    });
-    this.registerHandler('knowledge.createFolder', async (params) => {
-      const { path, baseId } = params as { path: string; baseId?: string };
-      if (this.knowledgeAdapter?.createFolder) {
-        await this.knowledgeAdapter.createFolder(path, baseId);
-        return { created: true };
-      }
-      /* in-memory fallback: seed an index.md so the folder is observable
-         through knowledge.list, which only returns nodes derived from the
-         path keys in this.knowledge. */
-      const cleaned = path.replace(/^\/+|\/+$/g, '');
-      if (!cleaned) throw new Error('folder name is required');
-      const indexPath = `${cleaned}/index.md`;
-      if (this.knowledge.has(indexPath)) throw new Error(`folder already exists: ${cleaned}`);
-      const leaf = cleaned.split('/').pop() || 'folder';
-      const heading = leaf.charAt(0).toUpperCase() + leaf.slice(1);
-      this.knowledge.set(indexPath, `# ${heading}\n\n`);
-      return { created: true };
-    });
-    this.registerHandler('knowledge.renameFolder', async (params) => {
-      const { from, to, baseId } = params as { from: string; to: string; baseId?: string };
-      if (this.knowledgeAdapter?.renameFolder) {
-        await this.knowledgeAdapter.renameFolder(from, to, baseId);
-        return { renamed: true };
-      }
-      const src = from.replace(/^\/+|\/+$/g, '');
-      const dst = to.replace(/^\/+|\/+$/g, '');
-      if (!src || !dst) throw new Error('both folder names are required');
-      const prefix = `${src}/`;
-      const keys = [...this.knowledge.keys()].filter((key) => key.startsWith(prefix));
-      if (keys.length === 0) throw new Error(`folder not found: ${src}`);
-      const collision = [...this.knowledge.keys()].some((key) => key.startsWith(`${dst}/`));
-      if (collision) throw new Error(`folder already exists: ${dst}`);
-      for (const key of keys) {
-        const value = this.knowledge.get(key)!;
-        this.knowledge.delete(key);
-        this.knowledge.set(`${dst}/${key.slice(prefix.length)}`, value);
-      }
-      return { renamed: true };
-    });
-    this.registerHandler('knowledge.deleteFolder', async (params) => {
-      const { path, baseId } = params as { path: string; baseId?: string };
-      if (this.knowledgeAdapter?.deleteFolder) {
-        await this.knowledgeAdapter.deleteFolder(path, baseId);
-        return { deleted: true };
-      }
-      const cleaned = path.replace(/^\/+|\/+$/g, '');
-      if (!cleaned) throw new Error('folder name is required');
-      const prefix = `${cleaned}/`;
-      const keys = [...this.knowledge.keys()].filter((key) => key.startsWith(prefix));
-      if (keys.length === 0) throw new Error(`folder not found: ${cleaned}`);
-      for (const key of keys) this.knowledge.delete(key);
-      return { deleted: true };
-    });
-    this.registerHandler('knowledge.deleteDoc', async (params) => {
-      const { path, baseId } = params as { path: string; baseId?: string };
-      if (this.knowledgeAdapter?.deleteDoc) {
-        await this.knowledgeAdapter.deleteDoc(path, baseId);
-        return { deleted: true };
-      }
-      const cleaned = path.replace(/^\/+|\/+$/g, '');
-      if (!cleaned) throw new Error('file path is required');
-      if (!this.knowledge.has(cleaned)) throw new Error(`file not found: ${cleaned}`);
-      this.knowledge.delete(cleaned);
-      return { deleted: true };
-    });
-    this.registerHandler('knowledge.list', async (params) => {
-      const { baseId } = params as { baseId?: string };
-      if (this.knowledgeAdapter?.list) return { nodes: await this.knowledgeAdapter.list(baseId) };
-      const handle = baseId ? this.browserKnowledgeHandles.get(baseId) : null;
-      if (handle) return { nodes: await listBrowserKnowledge(handle) };
-      return { nodes: [...this.knowledge.keys()].map((path) => ({ kind: 'doc', path })) };
-    });
-    this.registerHandler('knowledge.read', async (params) => {
-      const { path, baseId } = params as { path: string; baseId?: string };
-      if (this.knowledgeAdapter?.read) return { path, content: await this.knowledgeAdapter.read(path, baseId) };
-      const handle = baseId ? this.browserKnowledgeHandles.get(baseId) : null;
-      if (handle) return { path, content: await readBrowserKnowledge(handle, path) };
-      const content = this.knowledge.get(path);
-      if (content == null) throw new Error(`knowledge doc not found: ${path}`);
-      return { path, content };
-    });
-    this.registerHandler('knowledge.write', async (params) => {
-      const { path, content, baseId } = params as { path: string; content: string; baseId?: string };
-      if (this.knowledgeAdapter?.write) {
-        await this.knowledgeAdapter.write(path, content, baseId);
-        this.publish('knowledge:changed', { path });
-        return { written: true, path };
-      }
-      const handle = baseId ? this.browserKnowledgeHandles.get(baseId) : null;
-      if (handle) {
-        await writeBrowserKnowledge(handle, path, content);
-        this.publish('knowledge:changed', { path });
-        return { written: true, path };
-      }
-      this.knowledge.set(path, content);
-      this.publish('knowledge:changed', { path });
-      return { written: true, path };
-    });
-    this.registerHandler('knowledge.link', async (params) => {
-      const { from, to, displayText, baseId } = params as { from: string; to: string; displayText?: string; baseId?: string };
-      const current = await this.readKnowledgeRaw(from, baseId);
-      const link = `[${displayText ?? to}](${to})`;
-      await this.writeKnowledgeRaw(from, `${current.replace(/\s*$/, '')}\n\n${link}\n`, baseId);
-      this.publish('knowledge:changed', { path: from });
-      return { linked: true, from, to };
-    });
-    this.registerHandler('knowledge.handoff', async (params) => {
-      const { summary, nextSteps, context, baseId } = params as { summary: string; nextSteps?: string[]; context?: string[]; baseId?: string };
-      const path = `handoffs/${knowledgeDocName(summary)}.md`;
-      const body = renderHandoffDoc(summary, nextSteps ?? [], context ?? []);
-      await this.writeKnowledgeRaw(path, body, baseId);
-      this.publish('knowledge:changed', { path });
-      return { written: true, path };
-    });
-    this.registerHandler('adr.record', async (params) => {
-      const { title, body, baseId } = params as { title: string; body?: string; baseId?: string };
-      const path = `adrs/${knowledgeDocName(title)}.md`;
-      const content = `# ${title}\n\n${body ?? ''}\n`;
-      await this.writeKnowledgeRaw(path, content, baseId);
-      this.publish('knowledge:changed', { path });
-      return { recorded: true, path };
-    });
-
-    /* tasks */
+    registerKnowledgeHandlers(this as unknown as HostInternals);
     this.registerHandler('tasks.list', async () => {
       if (this.taskAdapter?.list) {
         this.tasks = await this.taskAdapter.list();
@@ -2305,766 +2095,11 @@ export class HostRpcServer {
     /* secrets — host returns masked entries; values never traverse rpc.
        the SecretStore lives host-side (renderer Settings page writes to it
        directly, not via RPC). plugins can only see masks + configured bit. */
-    this.registerHandler('secrets.list', (params) => {
-      const { scope } = (params as { scope?: 'user' | 'project' }) ?? {};
-      if (!this.secretStore) return { secrets: [] };
-      return {
-        secrets: this.secretStore.list(scope).map((entry) => ({
-          id: entry.id,
-          scope: entry.scope,
-          service: entry.service,
-          hint: entry.hint,
-          configured: entry.configured,
-        })),
-      };
-    });
-    this.registerHandler('secrets.has', (params) => {
-      const { id, scope } = params as { id: string; scope?: 'user' | 'project' };
-      return { id, scope, has: this.secretStore?.has(id, scope) ?? false };
-    });
-    this.registerHandler('secrets.use', async (params) => {
-      if (!this.secretUser) {
-        throw new Error('secrets.use is not available without a shell binding');
-      }
-      const input = params as Parameters<SecretUser>[0];
-      return this.secretUser(input);
-    });
-    /* secrets.set — writes via the SecretWriter hook (Tauri keyring) when
-       set, falls back to the in-process SecretStore. This is host-internal:
-       iframe plugins and broker callers never receive this route. */
-    this.registerHandler('secrets.set', async (params) => {
-      const input = params as SecretWriterInput;
-      if (!this.secretStore && !this.secretWriter) {
-        throw new Error('secrets.set is not available without a secret store');
-      }
-      const decision = await this.confirmDecider({
-        kind: 'secret-write',
-        message: `write secret "${input.id}"?`,
-        details: { id: input.id, scope: input.scope, service: input.service },
-      });
-      const confirmed = typeof decision === 'boolean' ? decision : decision.confirmed;
-      if (!confirmed) throw new Error(`secret write denied: ${input.id}`);
-      let entry: SecretEntry;
-      if (this.secretWriter) {
-        entry = await this.secretWriter(input);
-        /* mirror into local store so list/has reflect the change for the
-           renderer's optimistic UI. */
-        this.secretStore?.set({ id: input.id, value: input.value, scope: input.scope, service: input.service });
-      } else if (this.secretStore) {
-        entry = this.secretStore.set({ id: input.id, value: input.value, scope: input.scope, service: input.service });
-      } else {
-        throw new Error('secrets.set is not available without a secret store');
-      }
-      if (this.secretStore) {
-        this.publish('secrets:changed', { secrets: this.secretStore.list() });
-      }
-      return { secret: entry };
-    });
-    /* secrets.delete — removes a handle via the SecretDeleter hook (Tauri
-       keyring) when set, mirroring the removal into the in-process store so
-       the masked list updates immediately. This is host-internal: iframe
-       plugins and broker callers never receive this route. */
-    this.registerHandler('secrets.delete', async (params) => {
-      const { id, scope } = params as SecretDeleterInput;
-      if (!this.secretStore && !this.secretDeleter) {
-        throw new Error('secrets.delete is not available without a secret store');
-      }
-      const decision = await this.confirmDecider({
-        kind: 'secret-delete',
-        message: `delete secret "${id}"?`,
-        details: { id, scope },
-      });
-      const confirmed = typeof decision === 'boolean' ? decision : decision.confirmed;
-      if (!confirmed) throw new Error(`secret delete denied: ${id}`);
-      let removed = false;
-      if (this.secretDeleter) {
-        removed = await this.secretDeleter({ id, scope });
-        this.secretStore?.delete(id, scope);
-      } else if (this.secretStore) {
-        removed = this.secretStore.delete(id, scope);
-      }
-      if (this.secretStore) {
-        this.publish('secrets:changed', { secrets: this.secretStore.list() });
-      }
-      return { removed };
-    });
-    /* secrets.reveal — returns the raw value to the renderer ONLY. Plugin
-       iframes / MCP sidecars never get a reveal path; this handler must not
-       be exposed through the loopback host route used by plugins.
-       Confirmation is enforced HOST-SIDE via confirmDecider before the
-       value crosses the IPC boundary (defense-in-depth in addition to the
-       renderer's own host.ui.confirm flow). */
-    this.registerHandler('secrets.reveal', async (params) => {
-      const { id, scope } = params as { id: string; scope?: 'user' | 'project' };
-      const configured = this.secretStore?.has(id, scope) ?? false;
-      const decision = await this.confirmDecider({
-        kind: 'secret-reveal',
-        message: `reveal secret "${id}"?`,
-        details: { id, scope },
-      });
-      const confirmed = typeof decision === 'boolean' ? decision : decision.confirmed;
-      if (!confirmed) return { value: null, configured };
-      if (this.secretRevealer) {
-        return this.secretRevealer({ id, scope });
-      }
-      if (!this.secretStore) return { value: null, configured: false };
-      const value = this.secretStore.reveal(id, scope);
-      return { value, configured: value !== null };
-    });
-
-    /* ─── debug suite ──────────────────────────────────────────────────
-       Every debug.* call mutates the host `debug` state and appends one
-       timeline card (running → done/failed). The panel renders from this
-       state alone; the agent's tool activity IS the investigation log. */
-    this.registerHandler('debug.probe', async (params) => {
-      const p = params as {
-        adapter?: string;
-        config?: Record<string, unknown>;
-      };
-      const config = p.config ?? {};
-      let adapter = '';
-      try {
-        adapter = resolveDebugAdapter(p.adapter, config);
-      } catch (err) {
-        return {
-          adapter: typeof p.adapter === 'string' ? p.adapter : '',
-          command: '',
-          available: false,
-          detail: debugErrMessage(err),
-        } satisfies DebugAdapterProbe;
-      }
-      if (!this.debugRunner?.probe) {
-        return {
-          adapter,
-          command: '',
-          available: false,
-          detail: this.debugRunner
-            ? 'debug adapter probing is not available in this shell'
-            : 'debug is not available without the desktop shell',
-        } satisfies DebugAdapterProbe;
-      }
-      return this.debugRunner.probe({ adapter, config });
-    });
-
-    this.registerHandler('debug.start', async (params) => {
-      const p = params as {
-        scenario?: DebugScenario;
-        adapter?: string;
-        config?: Record<string, unknown>;
-        trust?: DebugTrust;
-      };
-      const runner = this.requireDebugRunner();
-      const config = p.config ?? {};
-      const adapter = resolveDebugAdapter(p.adapter, config);
-      const scenario: DebugScenario = {
-        title: p.scenario?.title ?? 'debug session',
-        whatsWrong: p.scenario?.whatsWrong,
-      };
-      const card = this.newDebugCard('start', `start · ${scenario.title}`, 'agent');
-      try {
-        const started = await runner.start({ adapter, config });
-        const session = this.openDebugSession(adapter, scenario, p.trust ?? 'observe', started.sessionId);
-        if (runner.capabilities) {
-          try {
-            this.debug.capabilities = await runner.capabilities({ sessionId: started.sessionId });
-          } catch {
-            this.debug.capabilities = { webAutoNav: false };
-          }
-        }
-        /* replay any breakpoints the human armed before the session existed. */
-        await this.replayBreakpoints(runner, started.sessionId);
-        if (started.blocked) {
-          this.raiseRoadblock(started.ask ?? 'reproduce the broken state, then continue');
-          this.finishDebugCard(card, { status: 'done', payload: { sessionId: started.sessionId, blocked: true, ask: started.ask } });
-          return { session, blocked: true, ask: started.ask };
-        }
-        session.status = 'inspecting';
-        this.debug.status = 'inspecting';
-        this.finishDebugCard(card, { status: 'done', payload: { sessionId: started.sessionId } });
-        return { session };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.setBreakpoints', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const p = params as { file: string; breakpoints?: DebugBreakpointSpec[]; setBy?: 'agent' | 'human' };
-      const setBy = p.setBy ?? 'agent';
-      const specs = p.breakpoints ?? [];
-      const card = this.newDebugCard('setBreakpoints', `bp · ${p.file} (${specs.length})`, setBy);
-      try {
-        const res = await runner.setBreakpoints({ sessionId: this.dapSessionId(session), file: p.file, breakpoints: specs });
-        const verified = res.breakpoints ?? [];
-        const records: DebugBreakpointRecord[] = specs.map((bp, index) => ({
-          file: p.file,
-          line: bp.line,
-          setBy,
-          condition: bp.condition,
-          hitCondition: bp.hitCondition,
-          logMessage: bp.logMessage,
-          verified: verified[index]?.verified,
-        }));
-        this.debug.breakpoints = [...this.debug.breakpoints.filter((b) => b.file !== p.file), ...records];
-        this.finishDebugCard(card, { status: 'done', payload: { file: p.file, breakpoints: records } });
-        return { breakpoints: records };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    /* human (or agent) arms a single breakpoint — works with no active session
-       (it's stored as intent and replayed on start), so the user can set
-       breakpoints for the AI to hit before debugging even begins. */
-    this.registerHandler('debug.addBreakpoint', async (params) => {
-      const p = params as { file: string; line: number; condition?: string; setBy?: 'agent' | 'human' };
-      const setBy = p.setBy ?? 'human';
-      if (!this.debug.breakpoints.some((bp) => bp.file === p.file && bp.line === p.line)) {
-        this.debug.breakpoints = [...this.debug.breakpoints, { file: p.file, line: p.line, setBy, condition: p.condition }];
-      }
-      await this.syncBreakpointsForFile(p.file);
-      this.publishDebug();
-      return { breakpoints: this.debug.breakpoints.map((bp) => ({ ...bp })) };
-    });
-    this.registerHandler('debug.removeBreakpoint', async (params) => {
-      const { file, line } = params as { file: string; line: number };
-      this.debug.breakpoints = this.debug.breakpoints.filter((bp) => !(bp.file === file && bp.line === line));
-      await this.syncBreakpointsForFile(file);
-      this.publishDebug();
-      return { breakpoints: this.debug.breakpoints.map((bp) => ({ ...bp })) };
-    });
-
-    this.registerHandler('debug.continue', async (params) => {
-      const runner = this.requireDebugRunner();
-      return this.execDebugStop('continue', params, (args) => runner.continue(args));
-    });
-    this.registerHandler('debug.stepOver', async (params) => {
-      const runner = this.requireDebugRunner();
-      return this.execDebugStop('stepOver', params, (args) => runner.stepOver(args));
-    });
-    this.registerHandler('debug.stepIn', async (params) => {
-      const runner = this.requireDebugRunner();
-      return this.execDebugStop('stepIn', params, (args) => runner.stepIn(args));
-    });
-    this.registerHandler('debug.stepOut', async (params) => {
-      const runner = this.requireDebugRunner();
-      return this.execDebugStop('stepOut', params, (args) => runner.stepOut(args));
-    });
-    this.registerHandler('debug.pause', async (params) => {
-      const runner = this.requireDebugRunner();
-      return this.execDebugStop('pause', params, (args) => runner.pause(args));
-    });
-
-    this.registerHandler('debug.stackTrace', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const p = (params as { threadId?: number }) ?? {};
-      const card = this.newDebugCard('stackTrace', 'stackTrace', 'agent');
-      try {
-        const res = await runner.stackTrace({ sessionId: this.dapSessionId(session), threadId: p.threadId });
-        const frames = (res.frames ?? []).slice(0, 50);
-        this.finishDebugCard(card, { status: 'done', payload: { frames } });
-        return { frames, total: res.frames?.length ?? frames.length };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.scopes', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const { frameId } = params as { frameId: number };
-      const card = this.newDebugCard('scopes', `scopes · frame ${frameId}`, 'agent');
-      try {
-        const res = await runner.scopes({ sessionId: this.dapSessionId(session), frameId });
-        this.finishDebugCard(card, { status: 'done', payload: { scopes: res.scopes } });
-        return { scopes: res.scopes };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.variables', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const { variablesReference } = params as { variablesReference: number };
-      const card = this.newDebugCard('variables', `variables · ref ${variablesReference}`, 'agent');
-      try {
-        const res = await runner.variables({ sessionId: this.dapSessionId(session), variablesReference });
-        const summary = summarizeVariables(res.variables ?? []);
-        this.finishDebugCard(card, { status: 'done', payload: summary });
-        return summary;
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.evaluate', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const p = params as { expression: string; frameId?: number };
-      /* trust gate — not a per-call confirm (that murders the loop); the
-         human sets the level and the live card log is the guardrail. */
-      if (session.trust !== 'evaluate') {
-        throw new Error(`evaluate is refused in "${session.trust}" trust mode — raise the session to "evaluate" first`);
-      }
-      const card = this.newDebugCard('evaluate', `eval · ${p.expression}`, 'agent');
-      try {
-        const res = await runner.evaluate({ sessionId: this.dapSessionId(session), expression: p.expression, frameId: p.frameId });
-        const scrub = this.debugScrubber ?? ((text: string) => text);
-        const result = truncateDebugString(scrub(res.result ?? '')).value;
-        const hasRef = Boolean(res.variablesReference && res.variablesReference > 0);
-        this.finishDebugCard(card, { status: 'done', payload: { expression: p.expression, result, type: res.type } });
-        return { result, type: res.type, ref: hasRef ? res.variablesReference : undefined, more: hasRef || undefined };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.setTrust', (params) => {
-      const session = this.activeDebugSession();
-      const { trust } = params as { trust: DebugTrust };
-      session.trust = trust;
-      this.publishDebug();
-      return { trust };
-    });
-
-    /* roadblock handoff — non-blocking: the tool returns immediately, the
-       panel shows the banner, the human reproduces the state in the app's
-       own window and clicks continue (debug.roadblock.resolve). */
-    this.registerHandler('debug.roadblock', (params) => {
-      const { ask } = params as { ask?: string };
-      this.raiseRoadblock(ask ?? 'reproduce the broken state, then continue');
-      return { blocked: true, ask: this.debug.roadblock?.ask };
-    });
-    this.registerHandler('debug.roadblock.resolve', () => {
-      const had = Boolean(this.debug.roadblock);
-      this.debug.roadblock = null;
-      this.debug.status = this.debug.session ? 'inspecting' : 'idle';
-      if (this.debug.session) this.debug.session.status = this.debug.status;
-      if (had) {
-        const card = this.newDebugCard('roadblock', 'continued', 'human');
-        this.finishDebugCard(card, { status: 'done', payload: { resolved: true } });
-      } else {
-        this.publishDebug();
-      }
-      return { resolved: had };
-    });
-
-    /* capture route — screenshot + console reuse preview_native; DOM/network
-       need a CDP attachment (deferred), surfaced as a clear error. */
-    this.registerHandler('debug.capture.screenshot', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const p = (params as { target?: string }) ?? {};
-      const card = this.newDebugCard('screenshot', 'screenshot', 'agent');
-      try {
-        const screenshot = await runner.capture.screenshot({ sessionId: this.dapSessionId(session), target: p.target });
-        this.finishDebugCard(card, { status: 'done', payload: { mimeType: screenshot.mimeType, dataBase64: screenshot.dataBase64 } });
-        return { screenshot };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-    this.registerHandler('debug.capture.console', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const p = (params as { limit?: number }) ?? {};
-      const card = this.newDebugCard('console', 'console', 'agent');
-      try {
-        const res = await runner.capture.console({ sessionId: this.dapSessionId(session), limit: p.limit });
-        this.finishDebugCard(card, { status: 'done', payload: { entries: res.entries } });
-        return { entries: res.entries };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-    this.registerHandler('debug.capture.dom', async (params) => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const card = this.newDebugCard('dom', 'dom', 'agent');
-      try {
-        if (!runner.capture.dom) throw new Error('DOM capture needs a CDP attachment (deferred to phase 1.5 — see spec §5a / §11)');
-        const dom = await runner.capture.dom({ sessionId: this.dapSessionId(session), selector: (params as { selector?: string })?.selector });
-        this.finishDebugCard(card, { status: 'done', payload: { dom } });
-        return { dom };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-    this.registerHandler('debug.capture.network', async () => {
-      const runner = this.requireDebugRunner();
-      const session = this.activeDebugSession();
-      const card = this.newDebugCard('network', 'network', 'agent');
-      try {
-        if (!runner.capture.network) throw new Error('network capture needs a CDP attachment (deferred to phase 1.5 — see spec §5a / §11)');
-        const network = await runner.capture.network({ sessionId: this.dapSessionId(session) });
-        this.finishDebugCard(card, { status: 'done', payload: { network } });
-        return { network };
-      } catch (err) {
-        this.finishDebugCard(card, { status: 'failed', error: debugErrMessage(err) });
-        throw err;
-      }
-    });
-
-    this.registerHandler('debug.rootCause', (params) => {
-      const { summary, file, line } = params as DebugRootCause;
-      this.debug.rootCause = { summary, file, line };
-      this.debug.status = 'root-caused';
-      if (this.debug.session) this.debug.session.status = 'root-caused';
-      const card = this.newDebugCard('rootCause', summary, 'agent');
-      this.finishDebugCard(card, { status: 'done', payload: { summary, file, line } });
-      return { rootCause: this.debug.rootCause };
-    });
-
-    /* web auto-nav (phase 1.5, optional) — drives the web surface when the
-       shell detected playwright; otherwise degrades to the roadblock handoff. */
-    this.registerHandler('debug.capabilities', () => ({ ...this.debug.capabilities }));
-    this.registerHandler('debug.navigate', async (params) => {
-      const { url } = params as { url: string };
-      return this.execDrive('navigate', `navigate · ${url}`, `open ${url} in the app, then continue`, { url },
-        (drive, session) => drive.navigate({ sessionId: this.dapSessionId(session), url }));
-    });
-    this.registerHandler('debug.click', async (params) => {
-      const { selector } = params as { selector: string };
-      return this.execDrive('click', `click · ${selector}`, `click ${selector} in the app, then continue`, { selector },
-        (drive, session) => drive.click({ sessionId: this.dapSessionId(session), selector }));
-    });
-    this.registerHandler('debug.fill', async (params) => {
-      const { selector, text } = params as { selector: string; text: string };
-      return this.execDrive('fill', `fill · ${selector}`, `fill ${selector} in the app, then continue`, { selector },
-        (drive, session) => drive.fill({ sessionId: this.dapSessionId(session), selector, text }));
-    });
-    this.registerHandler('debug.login', async (params) => {
-      const p = params as {
-        url?: string;
-        usernameSelector: string;
-        passwordSelector: string;
-        usernameSecret: string;
-        passwordSecret: string;
-        submitSelector?: string;
-        scope?: 'user' | 'project';
-      };
-      /* the card records only selectors + secret HANDLES — never values; the
-         shell resolves handles to values and types them, so the agent and the
-         timeline never see the raw secret. */
-      const cardPayload = {
-        usernameSelector: p.usernameSelector,
-        passwordSelector: p.passwordSelector,
-        usernameSecret: p.usernameSecret,
-        passwordSecret: p.passwordSecret,
-      };
-      return this.execDrive('login', 'login', 'log in to the app, then continue', cardPayload,
-        (drive, session) => drive.login({ sessionId: this.dapSessionId(session), ...p }));
-    });
-
-    this.registerHandler('debug.sessions', () => ({
-      sessions: this.debug.sessions.map((session) => ({ ...session })),
-      activeId: this.debug.session?.id ?? null,
-    }));
-    this.registerHandler('debug.select', (params) => {
-      const { id } = params as { id: string };
-      const next = this.debug.sessions.find((session) => session.id === id);
-      if (!next) throw new Error(`debug session not found: ${id}`);
-      this.debug.session = next;
-      this.debug.status = next.status;
-      this.publishDebug();
-      return { session: { ...next } };
-    });
-    this.registerHandler('debug.state', () => this.debugSnapshot());
-    this.registerHandler('debug.stop', async () => {
-      const session = this.debug.session;
-      if (this.debugRunner?.stop && session) {
-        try {
-          await this.debugRunner.stop({ sessionId: this.dapSessionId(session) });
-        } catch {
-          /* best-effort teardown */
-        }
-      }
-      if (session) {
-        session.status = 'idle';
-        this.debug.sessions = this.debug.sessions.filter((item) => item.id !== session.id);
-        this.debug.session = this.debug.sessions[this.debug.sessions.length - 1] ?? null;
-      }
-      this.debug.stop = null;
-      this.debug.roadblock = null;
-      this.debug.status = this.debug.session ? this.debug.session.status : 'idle';
-      this.publishDebug();
-      return { stopped: true };
-    });
-
-    /* plugins */
-    this.registerHandler('plugins.list', () => ({ plugins: [...this.plugins] }));
-    this.registerHandler('plugins.enable', (params) => {
-      const { id } = params as { id: string };
-      if (!this.plugins.some((p) => p.id === id)) throw new Error(`plugin not found: ${id}`);
-      this.plugins = this.plugins.map((p) => (p.id === id ? { ...p, enabled: true } : p));
-      this.publish('plugins:changed', { plugins: this.plugins });
-      return { enabled: true, id };
-    });
-    this.registerHandler('plugins.disable', (params) => {
-      const { id } = params as { id: string };
-      if (!this.plugins.some((p) => p.id === id)) throw new Error(`plugin not found: ${id}`);
-      this.plugins = this.plugins.map((p) => (p.id === id ? { ...p, enabled: false } : p));
-      this.publish('plugins:changed', { plugins: this.plugins });
-      return { disabled: true, id };
-    });
-    this.registerHandler('plugins.confirmInstall', async (params) => {
-      const details = params as {
-        manifest?: PanelManifest;
-        source?: { commit?: string; url?: string; ref?: string };
-        scope?: 'project' | 'user';
-        totalSizeBytes?: number;
-        files?: Array<{ path: string; sizeBytes: number }>;
-      };
-      const decision = await this.confirmDecider({
-        kind: 'plugin-install',
-        message: `install plugin ${details.manifest?.id ?? 'unknown plugin'}`,
-        details,
-      });
-      return normalizeConfirmDecision(decision, details.scope);
-    });
-    this.registerHandler('plugins.install', (params) => {
-      const { plugin, manifest, source, scope, entryUrl } = params as {
-        plugin?: PluginRef;
-        manifest?: PanelManifest;
-        source?: string;
-        scope?: 'project' | 'user';
-        /* URL of the plugin's entry point for URL-mode (external) plugins.
-           stored on the PluginRef so that the renderer can reconstruct a
-           BuiltinPlugin with iframe: { url } when plugins:changed fires. */
-        entryUrl?: string;
-      };
-      const ref: PluginRef = plugin ?? {
-        id: manifest?.id ?? `plugin-${Date.now()}`,
-        version: manifest?.version ?? '0.0.0',
-        scope: scope ?? 'project',
-        enabled: true,
-        installedAt: Date.now(),
-        source: source ?? 'staged',
-        permissions: manifest?.permissions ?? [],
-        ...(manifest ? { manifest } : {}),
-        ...(entryUrl ? { entryUrl } : {}),
-      };
-      this.plugins = [ref, ...this.plugins.filter((item) => item.id !== ref.id)];
-      this.publish('plugins:changed', { plugins: this.plugins });
-      return { installed: true, plugin: ref };
-    });
-    this.registerHandler('plugins.confirmUninstall', async (params) => {
-      const { id } = params as { id: string };
-      const decision = await this.confirmDecider({
-        kind: 'plugin-uninstall',
-        message: `uninstall plugin ${id}`,
-        details: { id },
-      });
-      return normalizeConfirmDecision(decision);
-    });
-    this.registerHandler('plugins.uninstall', (params) => {
-      const { id } = params as { id: string };
-      if (!this.plugins.some((plugin) => plugin.id === id)) throw new Error(`plugin not found: ${id}`);
-      this.plugins = this.plugins.filter((plugin) => plugin.id !== id);
-      this.publish('plugins:changed', { plugins: this.plugins });
-      return { uninstalled: true, id };
-    });
-
-    /* skills — currently a flat list supplied by the host; real M3+ migration
-       resolves user/project/builtin skills against the filesystem. */
-    this.registerHandler('skills.list', () => ({ skills: [...this.skills] }));
-    this.registerHandler('skills.read', (params) => {
-      const { id } = params as { id: string };
-      const skill = this.skills.find((s) => s.id === id);
-      if (!skill) throw new Error(`skill not found: ${id}`);
-      return { skill };
-    });
-    this.registerHandler('skills.write', (params) => {
-      const partial = params as Partial<SkillRecord>;
-      const id = partial.id ?? `skill-${Date.now()}`;
-      const existing = this.skills.find((s) => s.id === id);
-      const body = partial.body ?? existing?.body;
-      const skill: SkillRecord = {
-        id,
-        name: partial.name ?? existing?.name ?? id,
-        summary: partial.summary ?? existing?.summary ?? summarizeSkillBody(body) ?? '',
-        ...(body === undefined ? {} : { body }),
-        /* preserve skillsetId / origin / publishedTo unless caller overrides */
-        skillsetId: partial.skillsetId !== undefined ? partial.skillsetId : existing?.skillsetId,
-        origin: partial.origin ?? existing?.origin ?? 'polypore',
-        publishedTo: partial.publishedTo ?? existing?.publishedTo,
-      };
-      this.skills = [skill, ...this.skills.filter((s) => s.id !== skill.id)];
-      this.publish('skills:changed', { skills: this.skills });
-      return { skill, written: true };
-    });
-    this.registerHandler('skills.publish', async (params) => {
-      const { id, agents } = params as { id: string; agents: Array<'claude' | 'codex'> };
-      const existing = this.skills.find((s) => s.id === id);
-      if (!existing) throw new Error(`skill not found: ${id}`);
-      const skill: SkillRecord = { ...existing, publishedTo: [...new Set(agents)] };
-      this.skills = this.skills.map((s) => (s.id === id ? skill : s));
-      this.publish('skills:changed', { skills: this.skills });
-      if (this.skillPublisher) {
-        if (agents.length) {
-          await this.skillPublisher.publish(id, existing.name, existing.body ?? '', agents).catch(() => {});
-        } else {
-          await this.skillPublisher.unpublish(id).catch(() => {});
-        }
-      }
-      return { skill };
-    });
-    this.registerHandler('skills.delete', async (params) => {
-      const { id } = params as { id: string };
-      if (!this.skills.some((skill) => skill.id === id)) throw new Error(`skill not found: ${id}`);
-      if (this.skillPublisher) {
-        await this.skillPublisher.delete(id).catch(() => {});
-      }
-      this.skills = this.skills.filter((skill) => skill.id !== id);
-      this.publish('skills:changed', { skills: this.skills });
-      return { deleted: true, id };
-    });
-    this.registerHandler('skills.invoke', async (params) => {
-      const { id, sessionId, args } = params as { id: string; sessionId?: string; args?: Record<string, unknown> };
-      const skill = this.skills.find((s) => s.id === id);
-      if (!skill) throw new Error(`skill not found: ${id}`);
-      const header = `# Skill: ${skill.name || skill.id}`;
-      const argLine = args && Object.keys(args).length ? `\n\nArguments: ${JSON.stringify(args)}` : '';
-      const text = `${header}${argLine}\n\n${skill.body ?? ''}`.trim();
-      /* a skill "activates" by entering a chat session as a header-prefixed
-         message; reuse chat.send so the agent dispatcher handles delivery and
-         transcript persistence exactly like a user turn. */
-      let delivered = false;
-      if (sessionId) {
-        const chatSend = this.handlers.get('chat.send');
-        if (chatSend) {
-          await chatSend({ sessionId, text });
-          delivered = true;
-        }
-      }
-      this.publish('skills:invoked', { id, sessionId: sessionId ?? null, text, delivered });
-      return { invoked: true, id, sessionId: sessionId ?? null, delivered, text };
-    });
-
-    /* skillsets — bundle of skills (e.g. polyflow). loose skills (no
-       skillsetId) are also returned as a synthetic top-level group by
-       the renderer when needed. */
-    this.registerHandler('skillsets.list', () => ({ skillsets: [...this.skillsets] }));
-    this.registerHandler('skillsets.read', (params) => {
-      const { id } = params as { id: string };
-      const skillset = this.skillsets.find((s) => s.id === id);
-      if (!skillset) throw new Error(`skillset not found: ${id}`);
-      const skills = this.skills.filter((s) => s.skillsetId === id);
-      return { skillset, skills };
-    });
-    this.registerHandler('skillsets.upsert', (params) => {
-      const partial = params as Partial<SkillsetRecord> & { title: string };
-      const id = partial.id ?? fileSlug(partial.title);
-      const existing = this.skillsets.find((s) => s.id === id);
-      const skillset: SkillsetRecord = {
-        id,
-        title: partial.title,
-        version: partial.version ?? existing?.version ?? '0.1.0',
-        builtin: existing?.builtin ?? false,
-        source: partial.source ?? existing?.source ?? 'user',
-        summary: partial.summary ?? existing?.summary,
-        skills: partial.skills ?? existing?.skills ?? [],
-      };
-      this.skillsets = [skillset, ...this.skillsets.filter((s) => s.id !== id)];
-      this.publish('skillsets:changed', { skillsets: this.skillsets });
-      return { skillset };
-    });
-    this.registerHandler('skillsets.delete', (params) => {
-      const { id } = params as { id: string };
-      const target = this.skillsets.find((s) => s.id === id);
-      if (!target) throw new Error(`skillset not found: ${id}`);
-      if (target.builtin) throw new Error(`cannot delete builtin skillset: ${id}`);
-      this.skillsets = this.skillsets.filter((s) => s.id !== id);
-      /* orphan contained skills back to loose */
-      this.skills = this.skills.map((s) => (s.skillsetId === id ? { ...s, skillsetId: undefined } : s));
-      this.publish('skillsets:changed', { skillsets: this.skillsets });
-      this.publish('skills:changed', { skills: this.skills });
-      return { deleted: true, id };
-    });
-
-    /* mcp servers — registry of agent-agnostic mcp endpoints. polypore
-       owns the canonical list; the desktop shell publishes them to
-       ~/.claude/ and ~/.codex/ so all agents see the same servers. */
-    this.registerHandler('mcp.servers.list', (params) => {
-      const { scope } = (params as { scope?: McpServerRecord['scope'] }) ?? {};
-      const servers = scope ? this.mcpServers.filter((s) => s.scope === scope) : this.mcpServers;
-      return { servers: [...servers] };
-    });
-    this.registerHandler('mcp.servers.upsert', (params) => {
-      const partial = params as Partial<McpServerRecord> & { name: string; url: string };
-      const id = partial.id ?? `mcp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const server: McpServerRecord = {
-        id,
-        name: partial.name,
-        url: partial.url,
-        scope: partial.scope ?? 'polypore',
-        headers: partial.headers,
-        authRef: partial.authRef,
-        allowInsecure: partial.allowInsecure,
-        timeoutMs: partial.timeoutMs,
-        lastTest: partial.lastTest,
-      };
-      this.mcpServers = [server, ...this.mcpServers.filter((s) => s.id !== id)];
-      this.publish('mcp:servers-changed', { servers: this.mcpServers });
-      return { server };
-    });
-    this.registerHandler('mcp.servers.delete', (params) => {
-      const { id } = params as { id: string };
-      if (!this.mcpServers.some((s) => s.id === id)) throw new Error(`mcp server not found: ${id}`);
-      this.mcpServers = this.mcpServers.filter((s) => s.id !== id);
-      this.publish('mcp:servers-changed', { servers: this.mcpServers });
-      return { deleted: true, id };
-    });
-    this.registerHandler('mcp.servers.test', async (params) => {
-      const { id } = params as { id: string };
-      const server = this.mcpServers.find((s) => s.id === id);
-      if (!server) throw new Error(`mcp server not found: ${id}`);
-      let probeResult: McpTesterResult;
-      if (this.mcpTester) {
-        probeResult = await this.mcpTester({
-          transport: 'http',
-          url: server.url,
-          headers: server.headers,
-        });
-      } else {
-        /* renderer-only mode cannot actually reach the server; the desktop
-           shell registers a tester hook to do a real tools/list probe. */
-        probeResult = { ok: false, error: 'mcp test requires the desktop shell' };
-      }
-      const stamped = { ok: probeResult.ok, ts: Date.now(), status: probeResult.status, error: probeResult.error };
-      this.mcpServers = this.mcpServers.map((s) => (s.id === id ? { ...s, lastTest: stamped } : s));
-      this.publish('mcp:servers-changed', { servers: this.mcpServers });
-      return { ok: probeResult.ok, status: probeResult.status, error: probeResult.error };
-    });
-    /* mcp.discover — read claude/codex configs and return discovered MCPs.
-       Renderer wires this through tauriInvoke('mcp_discover_external').
-       Iframe plugins must declare mcp.invoke before plugin-loader will
-       forward this request. */
-    this.registerHandler('mcp.discover', async () => {
-      if (!this.mcpDiscoverer) return { servers: [] };
-      return this.mcpDiscoverer();
-    });
-    /* mcp.install — write an MCP entry into agent config files.
-       Renderer wires this to tauriInvoke('mcp_config_install'). */
-    this.registerHandler('mcp.install', async (params) => {
-      if (!this.mcpInstaller) return { installed: false, targets: [] };
-      return this.mcpInstaller(params as McpInstallInput);
-    });
-
-    /* formation — push a nodes/edges spec into host state so the agent
-       panel renders it. */
+    registerSecretsHandlers(this as unknown as HostInternals);
+    registerDebugHandlers(this as unknown as HostInternals);
+    registerPluginsHandlers(this as unknown as HostInternals);
+    registerSkillsHandlers(this as unknown as HostInternals);
+    registerMcpHandlers(this as unknown as HostInternals);
     this.registerHandler('formation.upsert', (params) => {
       const { nodes, edges } = params as { nodes: FormationNodeSpec[]; edges: FormationEdgeSpec[] };
       const value = { nodes, edges, ts: Date.now() };
@@ -3405,7 +2440,6 @@ const STATE_KEYS = new Set<string>([
   'workspace',
   'activePanel',
   'agentPanels',
-  'closedAgentPanel',
   'branch',
   'contextUsedPct',
   'context',
@@ -4114,11 +3148,11 @@ function emptyDebugState(): DebugState {
   };
 }
 
-function debugErrMessage(err: unknown): string {
+export function debugErrMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function resolveDebugAdapter(adapter: string | undefined, config: Record<string, unknown>): string {
+export function resolveDebugAdapter(adapter: string | undefined, config: Record<string, unknown>): string {
   const explicit = typeof adapter === 'string' ? adapter.trim() : '';
   if (explicit) return explicit;
   if (typeof config.adapterCommand === 'string' && config.adapterCommand.trim()) return 'custom';
@@ -4156,7 +3190,7 @@ export type SummarizedVariable = {
   more?: boolean;
 };
 
-function truncateDebugString(value: string): { value: string; truncated: boolean } {
+export function truncateDebugString(value: string): { value: string; truncated: boolean } {
   if (value.length <= DEBUG_STRING_BYTE_CAP) return { value, truncated: false };
   return { value: `${value.slice(0, DEBUG_STRING_BYTE_CAP)}…`, truncated: true };
 }
@@ -4188,7 +3222,7 @@ export function summarizeVariables(variables: DapVariable[]): {
   };
 }
 
-function memoryKnowledgeBase(): KnowledgeBaseRef {
+export function memoryKnowledgeBase(): KnowledgeBaseRef {
   return {
     id: 'memory',
     name: 'browser documents',
@@ -4198,14 +3232,14 @@ function memoryKnowledgeBase(): KnowledgeBaseRef {
   };
 }
 
-function browserDirectoryPicker(): null | (() => Promise<BrowserDirectoryHandle | null>) {
+export function browserDirectoryPicker(): null | (() => Promise<BrowserDirectoryHandle | null>) {
   const picker = (globalThis as { showDirectoryPicker?: unknown }).showDirectoryPicker;
   return typeof picker === 'function'
     ? () => (picker as () => Promise<BrowserDirectoryHandle | null>)()
     : null;
 }
 
-function browserKnowledgeBase(handle: BrowserDirectoryHandle): KnowledgeBaseRef {
+export function browserKnowledgeBase(handle: BrowserDirectoryHandle): KnowledgeBaseRef {
   return {
     id: `browser-${fileSlug(handle.name)}`,
     name: handle.name || 'browser documents',
@@ -4215,7 +3249,7 @@ function browserKnowledgeBase(handle: BrowserDirectoryHandle): KnowledgeBaseRef 
   };
 }
 
-async function listBrowserKnowledge(
+export async function listBrowserKnowledge(
   handle: BrowserDirectoryHandle,
   prefix = '',
 ): Promise<Array<{ kind: 'doc' | 'folder'; path: string }>> {
@@ -4236,14 +3270,14 @@ async function listBrowserKnowledge(
   return nodes.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-async function readBrowserKnowledge(root: BrowserDirectoryHandle, path: string) {
+export async function readBrowserKnowledge(root: BrowserDirectoryHandle, path: string) {
   const fileHandle = await browserFileHandle(root, path, false);
   const file = await fileHandle.getFile?.();
   if (!file) throw new Error(`browser document cannot be read: ${path}`);
   return file.text();
 }
 
-async function writeBrowserKnowledge(root: BrowserDirectoryHandle, path: string, content: string) {
+export async function writeBrowserKnowledge(root: BrowserDirectoryHandle, path: string, content: string) {
   const fileHandle = await browserFileHandle(root, path, true);
   const writable = await fileHandle.createWritable?.();
   if (!writable) throw new Error(`browser document cannot be written: ${path}`);
@@ -4288,7 +3322,7 @@ function looksTextualDocument(path: string) {
   return !/\.(bmp|gif|ico|jpe?g|lock|pdf|png|rmeta|rlib|so|sqlite|webp|zip)$/i.test(path);
 }
 
-function fileSlug(raw: string) {
+export function fileSlug(raw: string) {
   const slug = raw
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '-')
@@ -4296,7 +3330,7 @@ function fileSlug(raw: string) {
   return slug || 'documents';
 }
 
-function seedMemoryKnowledgePreset(
+export function seedMemoryKnowledgePreset(
   store: Map<string, string>,
   name: string,
   preset: KnowledgeBasePreset,
@@ -4355,7 +3389,7 @@ function dedupeHostDiagnostics(diagnostics: Diagnostic[]) {
   });
 }
 
-function normalizeConfirmDecision(decision: ConfirmDecision, fallbackScope?: 'project' | 'user') {
+export function normalizeConfirmDecision(decision: ConfirmDecision, fallbackScope?: 'project' | 'user') {
   if (typeof decision === 'boolean') return { confirmed: decision, scope: fallbackScope };
   return { confirmed: decision.confirmed, scope: decision.scope ?? fallbackScope };
 }
@@ -4412,7 +3446,7 @@ function offsetForPosition(content: string, line: number, column: number) {
   return Math.min(offset + safeColumn, lineEnd === -1 ? content.length : lineEnd);
 }
 
-function summarizeSkillBody(body?: string) {
+export function summarizeSkillBody(body?: string) {
   const line = body
     ?.split(/\r?\n/)
     .map((item) => item.trim())
@@ -4466,7 +3500,7 @@ function languageFromPath(path: string): string {
   return map[ext] ?? (ext ? ext : 'plaintext');
 }
 
-function knowledgeDocName(title: string): string {
+export function knowledgeDocName(title: string): string {
   const date = new Date().toISOString().slice(0, 10);
   const slug = String(title)
     .toLowerCase()
@@ -4476,7 +3510,7 @@ function knowledgeDocName(title: string): string {
   return `${date}-${slug}`;
 }
 
-function renderHandoffDoc(summary: string, nextSteps: string[], context: string[]): string {
+export function renderHandoffDoc(summary: string, nextSteps: string[], context: string[]): string {
   const lines = [`# Handoff: ${summary}`, ''];
   if (context.length) {
     lines.push('## Context', ...context.map((item) => `- ${item}`), '');
