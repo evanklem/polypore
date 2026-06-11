@@ -1,0 +1,19 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+button {
+  color: var(--ink);
+  border: 1px solid var(--line);
+  background: var(--ink-045);
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--ink);
+  font-family: var(--mono);
+  line-height: 1.6;
+}

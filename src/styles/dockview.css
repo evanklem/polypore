@@ -1,0 +1,464 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+:root[data-polypore-glass='solid'] .dockview-panel-surface,
+:root[data-polypore-glass='solid'] .panel-settings-overlay,
+:root[data-polypore-glass='solid'] .credentials-panel,
+:root[data-polypore-glass='solid'] .manual-card {
+  background: rgba(var(--c-surface-1-rgb), 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+
+.polypore-dockview-host {
+  position: relative;
+  display: block;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+}
+
+
+.polypore-dockview {
+  height: 100%;
+  background: transparent;
+  /* override dockview's vs-code-ish defaults so every panel inherits the
+     workspace gradient instead of dockview's gray/bluish group color. */
+  --dv-group-view-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--ink);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--ink);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted);
+  --dv-tabs-and-actions-container-height: 39px;
+  --dv-separator-border: var(--accent-12);
+  --dv-active-sash-color: var(--accent-28);
+  --dv-drag-over-background-color: var(--accent-18);
+  --dv-drag-over-border-color: var(--accent-deep);
+}
+
+
+/* Dockview owns .dv-content-container as a flex child below the tab bar.
+   Do not force height:100% on it: that makes header + content exceed the
+   group height while sashes resize. Stretch only the actual panel bodies. */
+.polypore-dockview .dv-groupview,
+.polypore-dockview .dv-content-container,
+.polypore-dockview .dv-tab-content-part,
+.polypore-dockview .dv-tab-content-part > * {
+  background: transparent;
+  min-height: 0;
+}
+
+
+.polypore-dockview .dv-groupview,
+.polypore-dockview .dv-tab-content-part,
+.polypore-dockview .dv-tab-content-part > * {
+  height: 100%;
+}
+
+
+.polypore-dockview .dv-groupview {
+  position: relative;
+  overflow: hidden;
+  /* neutral hairline by default. each panel keeps its own frame, but the edge
+     is quiet so two adjacent panels no longer stack into a bright honey seam.
+     the accent edge + glow is reserved for the ACTIVE panel below. */
+  border: 1px solid var(--line-quiet);
+  border-radius: var(--r-card);
+  background: linear-gradient(135deg, var(--ink-14), rgba(var(--c-surface-4-rgb), 0.48));
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
+}
+
+
+.polypore-dockview .dv-groupview.dv-active-group {
+  border-color: var(--line);
+  box-shadow: var(--shadow), 0 0 0 1px var(--accent-18);
+}
+
+
+.polypore-dockview .dv-groupview > * {
+  position: relative;
+  z-index: 1;
+}
+
+
+.polypore-dockview .dv-sash {
+  background: transparent;
+}
+
+
+.polypore-dockview .dv-sash::before {
+  /* neutral resting handle — the gap between panels no longer adds a honey
+     line on top of the two panel borders. accent feedback returns on drag
+     via --dv-active-sash-color. */
+  background: var(--line-quiet);
+}
+
+
+/* tabs styled to match the mockup tab strip — pill-shaped, glassy,
+   icon glyph + label, active tab brightens. */
+.polypore-dockview .dv-tabs-and-actions-container {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: rgba(var(--c-surface-1-rgb), 0.52);
+  box-shadow: none;
+  backdrop-filter: var(--blur-panel);
+  -webkit-backdrop-filter: var(--blur-panel);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+
+.polypore-dockview .dv-tabs-container {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 27px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+
+.polypore-dockview .dv-tabs-container::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+
+.polypore-dockview .dv-tabs-container.is-scrubbing-tabs {
+  cursor: grabbing;
+}
+
+
+/* dockview's built-in overflow dropdown shows a `v N` chevron when tabs
+   exceed the strip width. the mockup tab strip just has a + button at the
+   end — no overflow chevron — so we hide the dropdown to match. tabs
+   already scroll horizontally via overflow-x:auto on the container. */
+.polypore-dockview .dv-tabs-overflow-dropdown-root,
+.polypore-dockview .dv-tabs-overflow-dropdown-default {
+  display: none !important;
+}
+
+
+/* the right-tab-action slot is where dockview renders our + button via
+   rightHeaderActionsComponent. dockview puts a flex-grow:1 .dv-void-container
+   between the tabs and right-actions, which would push the + to the far
+   right edge. we swap their flex order so the + sits flush against the
+   last tab and the void (still draggable) takes the remaining space. */
+.polypore-dockview .dv-right-actions-container {
+  order: 1;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.polypore-dockview .dv-void-container {
+  order: 2;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+
+.polypore-dockview .dv-tab {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 27px;
+  max-width: 180px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--accent-18);
+  border-radius: var(--r-control);
+  background: var(--shadow-20);
+  color: var(--muted);
+  font-size: 12px;
+  font-family: var(--mono);
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+
+.polypore-dockview .dv-tab::before,
+.polypore-dockview .dv-tab::after {
+  display: none !important;
+}
+
+
+.polypore-dockview .dv-tab:active {
+  cursor: grabbing;
+}
+
+
+.polypore-dockview .dv-active-tab {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: var(--ink-13);
+  box-shadow: inset 0 0 22px rgba(var(--c-ink-rgb), 0.08);
+  backdrop-filter: var(--blur-overlay);
+  -webkit-backdrop-filter: var(--blur-overlay);
+}
+
+
+.polypore-dockview .dv-default-tab-action,
+.polypore-tab__close {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
+  display: grid;
+  place-items: center;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  border-radius: var(--r-inset);
+  cursor: pointer;
+}
+
+
+.polypore-dockview .dv-default-tab-action:hover,
+.polypore-tab__close:hover {
+  background: var(--accent-18);
+  color: var(--ink);
+}
+
+
+/* the + add-panel button lives inside dockview's right tab-action slot
+   so it hugs the trailing edge of the tab strip on the same group. */
+.dockview-add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+
+.dockview-add__button {
+  width: 28px;
+  height: 27px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--accent);
+  background: var(--shadow-20);
+  border: 1px solid var(--accent-18);
+  border-radius: var(--r-control);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+
+.dockview-add__button:hover {
+  color: var(--accent);
+  border-color: var(--accent-42);
+}
+
+
+.dockview-add__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  min-width: 200px;
+  background: rgba(var(--c-surface-2-rgb), 0.92);
+  border: 1px solid var(--ink-12);
+  border-radius: var(--r-control);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur-overlay);
+}
+
+
+.dockview-add__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-inset);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+
+.dockview-add__item:hover {
+  color: var(--ink);
+  background: var(--accent-08);
+}
+
+
+.dockview-add__icon {
+  color: var(--accent-deep);
+  min-width: 24px;
+}
+
+
+.dockview-add__section {
+  padding: 4px 8px 2px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: lowercase;
+  opacity: 0.7;
+}
+
+
+.dockview-add__divider {
+  height: 1px;
+  margin: 4px 4px;
+  background: var(--ink-12);
+}
+
+
+/* running chats read a touch warmer than the cold "add new panel" rows so
+   the eye lands on a live session first. */
+.dockview-add__item--chat {
+  color: var(--ink);
+}
+
+
+.dockview-add__item--chat .dockview-add__icon {
+  color: var(--accent);
+}
+
+
+.dockview-panel-surface {
+  height: 100%;
+  min-height: 0;
+  padding: 7px;
+  overflow: auto;
+}
+
+
+.dockview-panel-surface > * {
+  height: 100%;
+  min-height: 0;
+}
+
+
+.dockview-panel-surface--deferred {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+
+.dockview-panel-surface--deferred > * {
+  height: auto;
+}
+
+
+/* per-panel header bar shared across surfaces */
+.panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--polypore-panel-header-height, 30px);
+  padding: var(--polypore-panel-header-padding, 4px 6px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  background: rgba(var(--c-surface-1-rgb), 0.52);
+  color: var(--muted);
+}
+
+
+.panel-header__content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: var(--muted);
+}
+
+
+.panel-header__title {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+
+.panel-header__sep {
+  width: 1px;
+  height: 14px;
+  background: var(--accent-22);
+}
+
+
+.panel-header__meta {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.panel-header--file .panel-header__meta {
+  display: block;
+  min-width: 0;
+}
+
+
+.panel-header--file .panel-header__meta--path {
+  flex: 1 1 auto;
+}
+
+
+.panel-header--file .panel-header__meta--state {
+  flex: 0 1 auto;
+}
+
+
+.panel-header__meta--live {
+  color: var(--accent);
+}
+
+
+.panel-header__agent-pill {
+  color: var(--accent);
+}
+
+
+.panel-header__controls {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}

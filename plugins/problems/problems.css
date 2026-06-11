@@ -1,0 +1,102 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+.problem-row {
+  display: grid;
+  grid-template-columns: 56px auto minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--shadow-24);
+  border-color: var(--line-quiet);
+  border-radius: var(--r-control);
+  font-size: 12px;
+}
+
+
+.problem-row:hover {
+  background: var(--accent-06);
+  border-color: var(--accent-22);
+}
+
+
+.problem-row__source {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: lowercase;
+  color: var(--muted);
+  padding: 2px 6px;
+  border: 1px solid var(--accent-18);
+  border-radius: var(--r-inset);
+  background: var(--accent-06);
+  white-space: nowrap;
+}
+
+
+.problem-row__severity {
+  text-transform: lowercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
+
+.problem-row--error .problem-row__severity {
+  color: var(--danger);
+}
+
+
+.problem-row--warn .problem-row__severity {
+  color: var(--accent);
+}
+
+
+.problem-row--info .problem-row__severity {
+  color: rgba(var(--c-accent-pale-rgb), 0.92);
+}
+
+
+.problem-row--hint .problem-row__severity {
+  color: var(--muted);
+}
+
+
+.problem-row__file {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.problem-row__msg {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
+.problem-row > .verify-row-action--secondary,
+.check-row > .verify-row-action--secondary {
+  grid-column: 4;
+  grid-row: 1;
+}
+
+
+.problem-row > .verify-row-action--primary,
+.check-row > .verify-row-action--primary {
+  grid-column: 5;
+  grid-row: 1;
+}
+
+
+/* draggable problem and check rows */
+.problem-row[draggable='true'],
+.check-row[draggable='true'] {
+  cursor: grab;
+}
+
+
+.problem-row[draggable='true']:active,
+.check-row[draggable='true']:active {
+  cursor: grabbing;
+}

@@ -26,14 +26,8 @@ const blocks = [];
   let i = 0;
   let depth = 0;
   let blockStart = 0;
-  let inBlock = false;
   let inComment = false;
   let inString = null; // ' or " or null
-  const flushLeading = (end) => {
-    const text = css.slice(blockStart, end);
-    if (text.trim()) blocks.push({ kind: 'raw', text });
-    blockStart = end;
-  };
   while (i < css.length) {
     const ch = css[i];
     const next = css[i + 1];
@@ -49,21 +43,19 @@ const blocks = [];
     if (ch === '/' && next === '*') { inComment = true; i += 2; continue; }
     if (ch === '"' || ch === "'") { inString = ch; i++; continue; }
     if (ch === '{') {
-      if (depth === 0 && !inBlock) {
-        flushLeading(i);
-        inBlock = true;
-      }
       depth++;
       i++; continue;
     }
     if (ch === '}') {
       depth--;
       i++;
-      if (depth === 0 && inBlock) {
+      if (depth === 0) {
+        /* a rule block spans from the end of the previous block to this
+           closing brace — leading comments and the selector ride along, so
+           commentary stays attached to the rule it describes. */
         const text = css.slice(blockStart, i);
         blocks.push({ kind: 'rule', text });
         blockStart = i;
-        inBlock = false;
       }
       continue;
     }
@@ -90,10 +82,11 @@ const buckets = {
   agent:       { path: 'plugins/agent/agent.css',                      rules: [] },
   editor:      { path: 'plugins/editor/editor.css',                    rules: [] },
   diffHistory: { path: 'plugins/diff-history/diff-history.css',        rules: [] },
-  verify:      { path: 'plugins/verify/verify.css',                    rules: [] },
+  verify:      { path: 'plugins/debug/verify.css',                     rules: [] },
   terminal:    { path: 'plugins/terminal/terminal.css',                rules: [] },
   problems:    { path: 'plugins/problems/problems.css',                rules: [] },
   chat:        { path: 'src/styles/chat-extras.css',                   rules: [] },
+  misc:        { path: 'src/styles/misc.css',                          rules: [] },
 };
 
 /**
@@ -101,7 +94,10 @@ const buckets = {
  * matters: more specific tests run first. Class roots are normalized to the
  * first dash-separated token (e.g. ".memory-shell" → "memory").
  */
-function bucketFor(blockText) {
+function bucketFor(rawBlockText) {
+  /* strip comments before classifying — a comment mentioning ".diff-foo"
+     must not route a topbar rule into the diff bucket. */
+  const blockText = rawBlockText.replace(/\/\*[\s\S]*?\*\//g, '');
   const head = blockText.split('{')[0];
   // @-rules: @media, @keyframes, @supports, @font-face — route by the SELECTOR
   // inside @media; else default to shell.
@@ -139,7 +135,7 @@ function bucketForClass(cls) {
   if (cls.startsWith('panel-settings') || cls.startsWith('panel-help') || cls.startsWith('host-confirm') || cls.startsWith('global-settings') || cls.startsWith('credentials-panel') || cls.startsWith('credential-') || cls.startsWith('settings-tab') || cls.startsWith('settings-list') || cls.startsWith('settings-inline')) return 'overlays';
   if (cls.startsWith('project-launcher') || cls.startsWith('launcher-')) return 'launcher';
   if (cls.startsWith('preview-') || cls === 'preview') return 'preview';
-  if (cls.startsWith('memory-') || cls.startsWith('documents-') || cls.startsWith('knowledge-')) return 'memory';
+  if (cls.startsWith('memory-') || cls.startsWith('documents-') || cls.startsWith('knowledge-') || cls.startsWith('context-')) return 'memory';
   if (cls.startsWith('agent-') || cls.startsWith('formation-') || cls.startsWith('node-') || cls.startsWith('skill-') || cls.startsWith('runtime-') || cls.startsWith('graph-')) return 'agent';
   if (cls.startsWith('editor-') || cls.startsWith('code-') || cls.startsWith('edit-')) return 'editor';
   if (cls.startsWith('diff-') || cls.startsWith('history-') || cls.startsWith('compare-') || cls.startsWith('inspector-')) return 'diffHistory';

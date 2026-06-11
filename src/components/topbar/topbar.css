@@ -1,0 +1,620 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+.topbar,
+.dockspace,
+.bottombar,
+.m1-spine-proof {
+  position: relative;
+  z-index: 1;
+}
+
+
+.topbar,
+.bottombar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-color: var(--line);
+  background: rgba(var(--c-surface-1-rgb), 0.9);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+
+.topbar {
+  position: relative;
+  overflow: visible;
+  border-bottom: 1px solid var(--line);
+}
+
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--accent-18);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  background: var(--ink-045);
+  font-size: 12px;
+}
+
+
+.segment--project {
+  color: var(--accent);
+  border-color: var(--line-strong);
+  font-weight: 600;
+}
+
+
+.project-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+
+.project-menu__button {
+  max-width: 220px;
+  cursor: pointer;
+}
+
+
+.project-menu__button[aria-expanded='true'] {
+  background: var(--accent-12);
+}
+
+
+.project-menu__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.project-menu__chevron {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-menu--project {
+  width: 300px;
+}
+
+
+.project-menu__path {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 5px 5px;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.project-menu__actions,
+.project-menu__recents {
+  display: grid;
+  gap: 4px;
+}
+
+
+.project-menu__actions {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--accent-14);
+}
+
+
+.project-menu__actions button,
+.project-menu__recents button {
+  min-height: 34px;
+  display: grid;
+  gap: 2px;
+  justify-content: stretch;
+  padding: 7px 8px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+
+
+.project-menu__actions button:hover,
+.project-menu__recents button:hover:not(:disabled) {
+  border-color: var(--accent-24);
+  background: var(--accent-10);
+}
+
+
+.project-menu__actions button span,
+.project-menu__recents button span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.project-menu__actions button small,
+.project-menu__recents button small {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.project-menu__recents > span {
+  padding: 2px 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.project-menu__recents > small,
+.project-menu__error {
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.project-menu__error {
+  border: 1px solid rgba(var(--c-danger-rgb), 0.34);
+  border-radius: var(--r-control);
+  color: var(--danger);
+  background: rgba(90, 28, 20, 0.2);
+}
+
+
+.segment--mcp {
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.segment--agent {
+  color: var(--accent-deep);
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.segment--agent strong {
+  max-width: 126px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.agent-interrupt-button {
+  color: var(--muted);
+}
+
+
+.segment--lsp {
+  color: var(--muted);
+}
+
+
+.segment--updates {
+  color: var(--muted);
+}
+
+
+.settings-button {
+  min-height: 24px;
+  margin-left: auto;
+}
+
+
+.help-button {
+  min-height: 24px;
+}
+
+
+.git-branch-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+
+.branch-button {
+  min-height: 24px;
+  cursor: pointer;
+  color: var(--ink);
+  border-color: var(--accent-22);
+}
+
+
+.branch-button[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--accent-12);
+}
+
+
+.branch-button__label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.branch-button__name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.branch-button__dot {
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+
+.branch-button__chevron {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-select {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+
+.topbar-select__button {
+  gap: 7px;
+  color: var(--ink);
+  border-color: var(--accent-22);
+}
+
+
+.topbar-select__button[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  background: var(--accent-12);
+}
+
+
+.topbar-select__label {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-select__button strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+
+.topbar-select__chevron {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 180;
+  min-width: 190px;
+  display: grid;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid var(--accent-22);
+  border-radius: var(--r-card);
+  background: rgba(var(--c-surface-2-rgb), 0.96);
+  box-shadow: 0 18px 42px var(--shadow-38);
+  backdrop-filter: var(--blur-panel);
+}
+
+
+.topbar-menu--workspace {
+  min-width: 248px;
+}
+
+
+.topbar-menu--agent {
+  min-width: 210px;
+}
+
+
+.topbar-menu header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 5px 8px;
+  border-bottom: 1px solid var(--accent-14);
+}
+
+
+.topbar-menu header span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-menu header strong {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 11px;
+}
+
+
+.topbar-menu__item {
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: 7px 8px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+
+
+.topbar-menu__item span {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+
+.topbar-menu__item small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.topbar-menu__item:hover,
+.workspace-preset-menu__user-row:hover > .topbar-menu__item,
+.topbar-menu__item--active {
+  border-color: var(--accent-24);
+  background: var(--accent-10);
+}
+
+
+.topbar-menu__item--active span {
+  color: var(--accent);
+}
+
+
+.workspace-preset-menu__section {
+  display: grid;
+  gap: 4px;
+}
+
+
+.workspace-preset-menu__section--actions {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--accent-14);
+}
+
+
+.workspace-preset-menu__section--actions button {
+  min-height: 28px;
+  justify-content: flex-start;
+  padding: 0 8px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+
+.workspace-preset-menu__section--actions button:hover:not(:disabled) {
+  border-color: var(--accent-22);
+  background: var(--accent-08);
+  color: var(--ink);
+}
+
+
+.workspace-preset-menu__section--actions button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+
+.workspace-preset-menu__section--user {
+  margin-top: 3px;
+  padding-top: 6px;
+  border-top: 1px solid var(--accent-14);
+}
+
+
+.workspace-preset-menu__user-row {
+  position: relative;
+}
+
+
+.workspace-preset-menu__user-row > .topbar-menu__item {
+  width: 100%;
+  padding-right: 36px;
+}
+
+
+.topbar-menu__item-delete {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.1s;
+}
+
+
+.workspace-preset-menu__user-row:hover .topbar-menu__item-delete {
+  opacity: 1;
+}
+
+
+.topbar-menu__item-delete:focus-visible {
+  opacity: 1;
+}
+
+
+.topbar-menu__item-delete:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+}
+
+
+@media (hover: none) {
+  .topbar-menu__item-delete {
+    opacity: 1;
+  }
+}
+
+
+@media (max-width: 520px) {
+  .topbar-menu--workspace {
+    position: fixed;
+    top: 38px;
+    right: 8px;
+    left: 8px;
+    min-width: 0;
+  }
+}
+
+
+.workspace-preset-menu__notice {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--accent-18);
+  background: var(--accent-08);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.workspace-preset-dialog__error {
+  color: var(--danger) !important;
+}
+
+
+.workspace-preset-dialog .host-confirm-overlay__actions button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+
+.workspace-preset-dialog .host-confirm-overlay__actions .workspace-preset-dialog__delete {
+  border-color: rgba(var(--c-danger-rgb), 0.4);
+  background: rgba(var(--c-danger-rgb), 0.1);
+  color: var(--danger);
+}
+
+
+.workspace-preset-dialog .host-confirm-overlay__actions .workspace-preset-dialog__delete:hover {
+  border-color: rgba(var(--c-danger-rgb), 0.58);
+  background: rgba(var(--c-danger-rgb), 0.16);
+}
+
+
+.topbar-menu--git {
+  width: 248px;
+}
+
+
+.topbar-menu--git header {
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+
+.git-menu__branch-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+
+.topbar-menu--git header strong {
+  margin-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.topbar-menu--git header small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+
+.git-menu__status-badge {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.git-menu__status-badge--dirty {
+  color: var(--accent);
+}
+
+
+.git-menu__actions {
+  display: grid;
+  gap: 2px;
+}
+
+
+.git-menu__output {
+  max-height: 180px;
+  overflow: auto;
+  padding: 7px;
+  border: 1px solid var(--accent-14);
+  border-radius: var(--r-control);
+  color: var(--muted);
+  background: var(--shadow-20);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+
+.git-menu__error {
+  padding: 6px 8px;
+  border: 1px solid rgba(var(--c-danger-rgb), 0.34);
+  border-radius: var(--r-control);
+  color: var(--danger);
+  background: rgba(90, 28, 20, 0.2);
+  font-size: 11px;
+}

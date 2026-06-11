@@ -1,0 +1,92 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+.terminal-shell > .terminal {
+  flex: 1;
+  margin: 0;
+}
+
+
+.terminal-tabs {
+  display: flex;
+  gap: 4px;
+  min-height: 30px;
+  overflow-x: auto;
+}
+
+
+.terminal-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 104px;
+  max-width: 180px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--accent-14);
+  border-radius: var(--r-control);
+  background: rgba(var(--c-surface-0-rgb), 0.28);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+
+.terminal-tab--active {
+  border-color: var(--accent-32);
+  background: var(--accent-12);
+  color: var(--ink);
+}
+
+
+.terminal-tab span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.terminal-tab small {
+  margin-left: auto;
+  color: inherit;
+  opacity: 0.7;
+}
+
+
+.terminal-tab b {
+  color: inherit;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+
+.terminal-tab--add {
+  min-width: 30px;
+  justify-content: center;
+  font-size: 15px;
+}
+
+
+.terminal {
+  min-height: 0;
+  /* padding lives on the outer panel — NOT on the xterm container.
+     FitAddon computes rows from the container's clientHeight (which
+     includes padding), then xterm renders that many rows inside the
+     content box (which excludes padding), so any padding on the xterm
+     container makes FitAddon over-count by exactly the padding amount
+     and the bottom row(s) render below the visible area. keeping
+     padding here, on the panel section, gives the breathing room
+     without lying to FitAddon.
+
+     the top value is intentionally larger than the bottom so the first
+     visible row of text always has a comfortable gap to the panel's
+     top border once the terminal has scrolled past its initial empty
+     state — otherwise filled output butts right up against the chrome
+     and feels cramped compared to the fresh-state look. */
+  padding: 20px 18px 14px;
+  overflow: hidden;
+  color: rgba(var(--c-ink-rgb), 0.88);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}

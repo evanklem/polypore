@@ -1,0 +1,23 @@
+/* Workspace stylesheet, split from the old monolithic src/App.css by
+ * scripts/split-app-css.mjs. Import order IS the cascade order — the
+ * splitter verifies that every selector that appears in more than one
+ * file keeps its original relative order under this sequence, so do not
+ * reorder these lines without re-running that check. */
+
+@import './base.css';
+@import './misc.css';
+@import './shell.css';
+@import './dockview.css';
+@import '../components/topbar/topbar.css';
+@import '../components/BottomBar.css';
+@import './launcher.css';
+@import '../../plugins/diff-history/diff-history.css';
+@import '../../plugins/terminal/terminal.css';
+@import './chat-extras.css';
+@import '../../plugins/preview/preview.css';
+@import '../../plugins/agent/agent.css';
+@import '../../plugins/editor/editor.css';
+@import '../../plugins/memory/memory.css';
+@import '../../plugins/debug/verify.css';
+@import '../../plugins/problems/problems.css';
+@import '../components/overlays/overlays.css';

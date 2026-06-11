@@ -1,0 +1,9 @@
+/* extracted from src/App.css — do not edit free-form; keep selectors
+   scoped to this component family so cascade stays predictable. */
+
+.bottombar {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
