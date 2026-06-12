@@ -1,0 +1,26 @@
+# Maintainer: Evan Klem <evanklem2004@gmail.com>
+# Repackages the .deb published on GitHub releases; no compile step.
+# The in-app updater stays dormant in this install (it only self-updates
+# AppImage installs on Linux) — pacman owns updates here.
+pkgname=polypore-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Polypore desktop IDE"
+arch=('x86_64')
+url="https://github.com/evanklem/polypore"
+license=('MIT')
+depends=('cairo' 'desktop-file-utils' 'gdk-pixbuf2' 'glib2' 'gtk3'
+         'hicolor-icon-theme' 'libsoup3' 'pango' 'webkit2gtk-4.1')
+provides=('polypore')
+conflicts=('polypore')
+options=('!strip' '!emptydirs')
+source=("${url}/releases/download/v${pkgver}/Polypore_${pkgver}_amd64.deb"
+        "LICENSE::https://raw.githubusercontent.com/evanklem/polypore/v${pkgver}/LICENSE")
+sha256sums=('SKIP'
+            'SKIP')
+
+package() {
+    # makepkg unpacks the .deb into control.tar.gz/data.tar.gz
+    bsdtar -xf data.tar.gz -C "${pkgdir}"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
