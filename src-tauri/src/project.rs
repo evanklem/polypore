@@ -633,13 +633,18 @@ pub fn project_status() -> Result<ProjectStatus, String> {
 }
 
 #[tauri::command]
-pub fn git_run(action: String) -> Result<GitRunResult, String> {
+pub async fn git_run(action: String) -> Result<GitRunResult, String> {
     let root = project_context::active_project_root()?;
     let args = git_action_args(&action)?;
-    let output = Command::new("git")
+    /* fetch/pull/push hit the network — run async so a slow remote doesn't
+    block the main thread, and refuse interactive credential prompts: there
+    is no terminal to answer them, so fail fast instead of hanging the menu. */
+    let output = tokio::process::Command::new("git")
         .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
         .current_dir(&root)
         .output()
+        .await
         .map_err(|err| format!("failed to run git {action}: {err}"))?;
     let combined = format!(
         "{}{}",

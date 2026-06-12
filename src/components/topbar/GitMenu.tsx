@@ -35,6 +35,9 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
       if (next) onStatusChange(next);
       const text = result.output.trim() || `git ${result.command.join(' ')} exited ${result.exitCode ?? 0}`;
       setOutput(text);
+      if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
+        setError(`git ${action} failed (exit ${result.exitCode})`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
