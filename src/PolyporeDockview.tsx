@@ -521,11 +521,28 @@ export function PolyporeDockview({
     const clearTabDragging = () => {
       if (document.body.dataset.dvDragging) delete document.body.dataset.dvDragging;
     };
+    /* click-flick guard: on a fast click+flick over a tab, WebKitGTK can
+       begin a native drag whose terminating button-release is lost to a GTK
+       grab race — the release reaches neither the page (no mouseup) nor the
+       drag session (no dragend), so the drag image stays welded to the
+       cursor until the next click. JS cannot cancel an in-flight native
+       drag, only stop one from starting: veto any tab dragstart that fires
+       within the hold threshold of its pointerdown (or after the button is
+       already up). dockview's DragHandler bails on defaultPrevented, so the
+       cancel is clean. a deliberate drag begun that fast just needs a retry. */
+    const TAB_DRAG_MIN_HOLD_MS = 150;
+    let tabStripPointerDownAt = 0;
+    let tabStripPointerIsDown = false;
     const onDragStart = (e: DragEvent) => {
       const target = e.target;
-      if (target instanceof Element && target.closest('.dv-tab, .dv-tabs-and-actions-container')) {
-        document.body.dataset.dvDragging = '1';
+      if (!(target instanceof Element) || !target.closest('.dv-tab, .dv-tabs-and-actions-container')) {
+        return;
       }
+      if (!tabStripPointerIsDown || performance.now() - tabStripPointerDownAt < TAB_DRAG_MIN_HOLD_MS) {
+        e.preventDefault();
+        return;
+      }
+      document.body.dataset.dvDragging = '1';
     };
     const onDragEnd = () => clearTabDragging();
     const onPointerDown = (e: PointerEvent) => {
@@ -533,6 +550,10 @@ export function PolyporeDockview({
       if (target instanceof Element) {
         if (target.closest('.dv-tabs-and-actions-container')) {
           window.getSelection()?.removeAllRanges();
+          if (e.button === 0) {
+            tabStripPointerDownAt = performance.now();
+            tabStripPointerIsDown = true;
+          }
         }
         if (target.closest('.dv-sash')) {
           document.body.dataset.dvResizing = '1';
@@ -587,9 +608,9 @@ export function PolyporeDockview({
       rail.scrollLeft = scrubDrag.startLeft - delta;
       e.preventDefault();
     };
-    const onPointerUp = () => { clearResizeState('pointerup'); clearTabDragging(); };
-    const onPointerCancel = () => { clearResizeState('pointercancel'); clearTabDragging(); };
-    const onBlur = () => { clearResizeState('blur'); clearTabDragging(); };
+    const onPointerUp = () => { tabStripPointerIsDown = false; clearResizeState('pointerup'); clearTabDragging(); };
+    const onPointerCancel = () => { tabStripPointerIsDown = false; clearResizeState('pointercancel'); clearTabDragging(); };
+    const onBlur = () => { tabStripPointerIsDown = false; clearResizeState('blur'); clearTabDragging(); };
     let agentAddDisposable: { dispose: () => void } | null = null;
     let agentRemoveDisposable: { dispose: () => void } | null = null;
     let agentActiveDisposable: { dispose: () => void } | null = null;
