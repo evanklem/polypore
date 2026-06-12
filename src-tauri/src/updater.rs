@@ -60,6 +60,16 @@ pub async fn updater_status(app: tauri::AppHandle) -> Result<UpdaterStatus, Stri
 }
 
 #[tauri::command]
+pub fn updater_current_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[tauri::command]
+pub fn updater_relaunch(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[tauri::command]
 pub async fn updater_install(app: tauri::AppHandle) -> Result<String, String> {
     let updater = app.updater().map_err(|err| err.to_string())?;
     let update = updater

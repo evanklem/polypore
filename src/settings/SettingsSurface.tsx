@@ -6,6 +6,7 @@ import { PluginsTab } from './tabs/PluginsTab';
 import { AgentsTab } from './tabs/AgentsTab';
 import { PanelsTab } from './tabs/PanelsTab';
 import { ProjectTab } from './tabs/ProjectTab';
+import { UpdatesTab } from './tabs/UpdatesTab';
 import type { ProjectSettingsGroup } from './tabs/project/projectConfig';
 import type { GlobalSettingsServices } from './tabs/types';
 import type { PanelCatalogItem } from '../components/overlays/panelCatalog';
@@ -28,6 +29,7 @@ export type CanonicalSettingsSection =
   | 'extensions'
   | 'agents'
   | 'credentials'
+  | 'updates'
   | 'appearance';
 
 export type SettingsSection = CanonicalSettingsSection | 'interface' | 'plugins' | 'overview';
@@ -35,7 +37,7 @@ export type SettingsSection = CanonicalSettingsSection | 'interface' | 'plugins'
 export type SectionJumpTarget =
   | { section: 'panels'; panelSlot?: string }
   | { section: 'project'; projectGroup?: ProjectSettingsGroup }
-  | { section: 'extensions' | 'agents' | 'credentials' | 'appearance' };
+  | { section: 'extensions' | 'agents' | 'credentials' | 'updates' | 'appearance' };
 
 const SECTIONS: Array<{
   id: CanonicalSettingsSection;
@@ -50,6 +52,7 @@ const SECTIONS: Array<{
   { id: 'extensions', label: 'extensions', blurb: 'installed plugins and sources', group: 'system', icon: '+-', tags: 'plugins install disable uninstall' },
   { id: 'agents', label: 'agents', blurb: 'agent clis and availability', group: 'system', icon: 'ai', tags: 'codex claude path probe' },
   { id: 'credentials', label: 'credentials', blurb: 'secret handles and scopes', group: 'system', icon: '**', tags: 'keys secrets tokens api' },
+  { id: 'updates', label: 'updates', blurb: 'version, check, install', group: 'system', icon: 'up', tags: 'update version release install upgrade' },
   { id: 'appearance', label: 'appearance', blurb: 'accent, motion, surface', group: 'look', icon: 'px', tags: 'interface theme color glass motion' },
 ];
 
@@ -184,6 +187,9 @@ export function SettingsSurface({
           )}
           {active === 'agents' && (
             <AgentsTab services={services} notice={notice} setNotice={setNotice} />
+          )}
+          {active === 'updates' && (
+            <UpdatesTab services={services} setNotice={setNotice} />
           )}
         </div>
       </section>

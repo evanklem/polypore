@@ -158,6 +158,8 @@ fn main() {
             pty::pty_resize,
             updater::updater_status,
             updater::updater_install,
+            updater::updater_current_version,
+            updater::updater_relaunch,
             secrets::secrets_set,
             secrets::secrets_set_allowed_hosts,
             secrets::secrets_list,

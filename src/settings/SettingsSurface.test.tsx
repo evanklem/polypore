@@ -24,7 +24,7 @@ describe('SettingsSurface', () => {
   test('defaults to panels and lists the settings sections', () => {
     render(<SettingsSurface services={stubServices()} onClose={() => {}} />);
     const nav = screen.getByRole('navigation', { name: /settings sections/i });
-    for (const name of ['panels', 'project', 'extensions', 'agents', 'credentials', 'appearance']) {
+    for (const name of ['panels', 'project', 'extensions', 'agents', 'credentials', 'updates', 'appearance']) {
       expect(within(nav).getByRole('button', { name: new RegExp(`^${name}`) })).toBeTruthy();
     }
     expect(within(nav).queryByRole('button', { name: /^overview/i })).toBeNull();
