@@ -110,6 +110,9 @@ if (!listed.plugins.some((plugin) => plugin.id === 'polypore.chat')) throw new E
 tool('polypore.skills.create', { id: 'pipeline-smoke', body: '# pipeline-smoke\n' });
 const skills = tool('polypore.skills.list', { scope: 'project' });
 if (!skills.skills.some((skill) => skill.id === 'pipeline-smoke')) throw new Error('created skill missing');
+/* the skill is written into the real project's .polypore/skills — delete it
+   again so the smoke test leaves no artifact in the working tree. */
+tool('polypore.skills.delete', { id: 'pipeline-smoke' });
 /* security posture: without a secret broker the standalone sidecar must NOT
    read secret values from its own environment. listing returns nothing and the
    value never appears, even when POLYPORE_SECRET_* is present in env. */
