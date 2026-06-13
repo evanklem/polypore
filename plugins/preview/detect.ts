@@ -293,11 +293,20 @@ export function applyUrlOverrideToCommand(rawCommand: string, override: { host: 
   const runScriptMatch = /^(\s*(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?[a-z0-9:_-]+)(\s+--\s+)?(.*)$/i.exec(command);
   if (runScriptMatch) {
     const [, head, existingSep, tail] = runScriptMatch;
+    const trimmedTail = tail.trim();
+    /* if a `--` already forwards a *subcommand* (a non-flag token like
+       `dev` in `npm run tauri -- dev`) to a nested launcher, appending the
+       dev-server flags to that same group passes them to the wrong program —
+       e.g. `tauri dev`, which rejects `--host`/`--port` and needs its own
+       `--` to reach vite. We can't safely inject there, so leave it alone. */
+    if (existingSep && trimmedTail && !trimmedTail.startsWith('-')) {
+      return command;
+    }
     const sep = existingSep ? existingSep : ' -- ';
     const extras: string[] = [];
     if (!hostReplaced) extras.push(`--host ${override.host}`);
     if (!portReplaced) extras.push(`--port ${override.port}`);
-    return `${head}${sep}${[tail.trim(), ...extras].filter(Boolean).join(' ')}`;
+    return `${head}${sep}${[trimmedTail, ...extras].filter(Boolean).join(' ')}`;
   }
   return command;
 }

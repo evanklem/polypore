@@ -325,6 +325,19 @@ describe('url helpers', () => {
       .toBe('python manage.py runserver');
   });
 
+  test('applyUrlOverrideToCommand leaves a forwarded subcommand alone', () => {
+    /* `npm run tauri -- dev` forwards `dev` to the tauri CLI. Appending
+       --host/--port to that group lands them on `tauri dev`, which rejects
+       them (it needs a second `--` to reach vite). We can't safely inject, so
+       the command must come back unchanged rather than mangled. */
+    expect(applyUrlOverrideToCommand('npm run tauri -- dev', { host: '127.0.0.1', port: '1420' }))
+      .toBe('npm run tauri -- dev');
+    /* but a `--` that already forwards dev-server flags is still safe to
+       extend. */
+    expect(applyUrlOverrideToCommand('npm run dev -- --port 1420', { host: '127.0.0.1', port: '1423' }))
+      .toBe('npm run dev -- --port 1423 --host 127.0.0.1');
+  });
+
   test('extractPreviewUrl pulls the first local url out of process output', () => {
     expect(extractPreviewUrl('opened http://localhost:9400\n')).toBe('http://localhost:9400');
     expect(extractPreviewUrl('listening on http://0.0.0.0:8080/admin')).toBe('http://localhost:8080/admin');

@@ -405,15 +405,20 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
     const inlineUrl = extractPreviewUrl(command);
     const finalUrl = url.trim() || inlineUrl;
     const override = parseHostPort(url);
-    const rewrittenCommand = override ? applyUrlOverrideToCommand(command, override) : command;
-    const promoteToSite = candidateKind === 'cli' && !!(url.trim() || inlineUrl);
-    const commandAndRaw = `${rewrittenCommand} ${rawCommandHint}`;
+    /* decide native-ness from the command as typed, before any rewrite:
+       native runtimes (tauri/electron/...) manage their own dev server, so the
+       host/port bind rewrite is meaningless for them and can corrupt their
+       argv (e.g. appending vite's --host/--port onto `tauri dev`). skip the
+       override entirely for native commands. */
+    const commandAndRaw = `${command} ${rawCommandHint}`;
     const explicitNative = /\b(tauri|electron|wails|neutralino|nw|nodewebkit|cargo\s+tauri)\b/i.test(commandAndRaw)
-      || isNativeExecutableCommand(rewrittenCommand)
+      || isNativeExecutableCommand(command)
       || isMacOpenNativeCommand(rawCommandHint)
       || isWindowsShellNativeCommand(rawCommandHint)
       || isLinuxLauncherNativeCommand(rawCommandHint)
       || isPackageExecNativeCommand(rawCommandHint);
+    const rewrittenCommand = override && !explicitNative ? applyUrlOverrideToCommand(command, override) : command;
+    const promoteToSite = candidateKind === 'cli' && !!(url.trim() || inlineUrl);
     return {
       command: rewrittenCommand,
       url: finalUrl,
