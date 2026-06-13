@@ -4,11 +4,15 @@ export interface HostInputBoxOverlayProps {
   prompt: string;
   placeholder?: string;
   initialValue?: string;
+  /* mask the input and submit it verbatim — used for credential prompts
+     (SSH key passphrases, HTTPS secrets) where trimming would corrupt the
+     value the caller typed. */
+  secret?: boolean;
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }
 
-export function HostInputBoxOverlay({ prompt, placeholder, initialValue, onCancel, onSubmit }: HostInputBoxOverlayProps) {
+export function HostInputBoxOverlay({ prompt, placeholder, initialValue, secret, onCancel, onSubmit }: HostInputBoxOverlayProps) {
   const [value, setValue] = useState(initialValue ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -20,9 +24,9 @@ export function HostInputBoxOverlay({ prompt, placeholder, initialValue, onCance
   }, []);
 
   const submit = () => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
+    const next = secret ? value : value.trim();
+    if (!next) return;
+    onSubmit(next);
   };
 
   return (
@@ -33,6 +37,7 @@ export function HostInputBoxOverlay({ prompt, placeholder, initialValue, onCance
         </header>
         <input
           ref={inputRef}
+          type={secret ? 'password' : 'text'}
           value={value}
           placeholder={placeholder}
           onChange={(e) => setValue(e.target.value)}

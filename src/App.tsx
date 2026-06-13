@@ -1648,6 +1648,9 @@ function App() {
     value?: string;
     resolve: (value: string | null) => void;
   } | null>(null);
+  /* in-app answer to a git/ssh credential prompt routed through the askpass
+     broker. cancel-only: closing the modal cancels the underlying git op. */
+  const [askpassPrompt, setAskpassPrompt] = useState<{ id: string; prompt: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -2112,6 +2115,21 @@ function App() {
   }, [projectVersion]);
 
   useEffect(() => {
+    const unlisten = tauriListen<{ id: string; prompt: string }>('polypore://askpass-prompt', (payload) => {
+      setAskpassPrompt({ id: payload.id, prompt: payload.prompt });
+    });
+    if (!unlisten) return;
+    let disposed = false;
+    unlisten.then((dispose) => {
+      if (disposed) dispose();
+    }).catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten.then((dispose) => dispose()).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
     /* keep host state in sync with the renderer's currently-active session
        agent. agent probe (acp vs stdio) doesn't surface anywhere in chrome
        per spec §12 — panels that need it (e.g., chat) read it themselves. */
@@ -2335,6 +2353,20 @@ function App() {
           onSubmit={(value) => {
             inputBoxRequest.resolve(value);
             setInputBoxRequest(null);
+          }}
+        />
+      )}
+      {askpassPrompt && (
+        <HostInputBoxOverlay
+          prompt={askpassPrompt.prompt}
+          secret
+          onCancel={() => {
+            tauriInvoke('askpass_cancel', { id: askpassPrompt.id })?.catch(() => {});
+            setAskpassPrompt(null);
+          }}
+          onSubmit={(value) => {
+            tauriInvoke('askpass_respond', { id: askpassPrompt.id, secret: value })?.catch(() => {});
+            setAskpassPrompt(null);
           }}
         />
       )}

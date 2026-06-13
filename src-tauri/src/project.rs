@@ -633,15 +633,30 @@ pub fn project_status() -> Result<ProjectStatus, String> {
 }
 
 #[tauri::command]
-pub async fn git_run(action: String) -> Result<GitRunResult, String> {
+pub async fn git_run(
+    app: tauri::AppHandle,
+    broker: tauri::State<'_, crate::askpass_broker::AskpassBroker>,
+    action: String,
+) -> Result<GitRunResult, String> {
     let root = project_context::active_project_root()?;
     let args = git_action_args(&action)?;
     /* fetch/pull/push hit the network — run async so a slow remote doesn't
-    block the main thread, and refuse interactive credential prompts: there
-    is no terminal to answer them, so fail fast instead of hanging the menu. */
+    block the main thread. Credential prompts (SSH key passphrase, HTTPS creds)
+    are answered in-app via the askpass helper: GIT_ASKPASS / SSH_ASKPASS point
+    back at this binary, which the broker routes to a modal. GIT_TERMINAL_PROMPT
+    stays 0 so a missing helper fails fast instead of hanging on a dead tty. */
+    let askpass = broker.ensure_started(app)?;
+    let helper = std::env::current_exe()
+        .map_err(|err| format!("failed to locate askpass helper: {err}"))?;
     let output = tokio::process::Command::new("git")
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_ASKPASS", &helper)
+        .env("SSH_ASKPASS", &helper)
+        .env("SSH_ASKPASS_REQUIRE", "force")
+        .env(crate::askpass_broker::HELPER_FLAG_ENV, "1")
+        .env(crate::askpass_broker::BROKER_URL_ENV, &askpass.url)
+        .env(crate::askpass_broker::BROKER_TOKEN_ENV, &askpass.token)
         .current_dir(&root)
         .output()
         .await

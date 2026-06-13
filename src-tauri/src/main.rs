@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agent;
+mod askpass_broker;
 mod broker_security;
 mod dap;
 mod debug_capture;
@@ -27,6 +28,13 @@ mod updater;
 mod webdriver;
 
 fn main() {
+    // git/ssh re-exec this binary as their askpass helper (GIT_ASKPASS /
+    // SSH_ASKPASS point at it, flagged by an env var). Handle that and exit
+    // before any GUI initialisation so a credential prompt stays cheap.
+    if askpass_broker::running_as_helper() {
+        askpass_broker::run_helper_and_exit();
+    }
+
     // GTK3 + WebKitGTK on Wayland allocates a new Cairo surface every frame
     // during panel resize, making sash drag laggy. X11/XWayland avoids that
     // per-frame alloc (4x fewer cycles in perf traces). Force X11 unless the
@@ -44,6 +52,7 @@ fn main() {
         .manage(mcp_super::McpSupervisor::default())
         .manage(secret_broker::SecretBroker::default())
         .manage(host_broker::HostBroker::default())
+        .manage(askpass_broker::AskpassBroker::default())
         .manage(fs_watch::FsWatcher::default())
         .manage(pty::PtyRegistry::default())
         .manage(snapshotter::SnapshotterRegistry::default())
@@ -84,6 +93,8 @@ fn main() {
             fs_watch::knowledge_read,
             fs_watch::knowledge_write,
             host_broker::mcp_host_rpc_respond,
+            askpass_broker::askpass_respond,
+            askpass_broker::askpass_cancel,
             iterate::iterate_run,
             iterate::iterate_status,
             lsp::lsp_diagnostics_collect,
