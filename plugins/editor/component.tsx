@@ -1311,7 +1311,11 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
           <div className="quick-open" role="dialog" aria-label="quick open">
             <header>
               <strong>quick open</strong>
-              <button onClick={() => setQuickOpen(false)}>close</button>
+              <button aria-label="close" title="close" onClick={() => setQuickOpen(false)}>
+                <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                  <path d="M4 4l8 8M12 4l-8 8" />
+                </svg>
+              </button>
             </header>
             <input
               value={query}
@@ -1345,10 +1349,10 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
                     aria-selected={isSelected}
                     onClick={() => openFile(path)}
                   >
-                    <span>{meta.name}</span>
-                    <small>{path}</small>
-                    {meta.status && <i>{meta.status}</i>}
-                    {meta.diagnostics && <i>!</i>}
+                    <span title={meta.name}>{meta.name}</span>
+                    <small title={path}>{path}</small>
+                    {meta.status && <i className="quick-open__badge">{meta.status}</i>}
+                    {meta.diagnostics && <i className="quick-open__badge quick-open__badge--diag">{meta.diagnostics}</i>}
                   </button>
                 );
               })}

@@ -787,8 +787,8 @@
   max-height: min(70%, 430px);
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-card);
@@ -806,27 +806,53 @@
 
 
 .quick-open header strong {
-  color: var(--ink);
-  font-size: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
 }
 
 
 .quick-open header button {
   margin-left: auto;
-  min-height: 24px;
-  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-control);
   color: var(--muted);
-  font-size: 11px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+
+.quick-open header button:hover {
+  background: var(--accent-10);
+  color: var(--ink);
 }
 
 
 .quick-open input {
-  min-height: 34px;
-  padding: 0 10px;
+  min-height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--accent-24);
   border-radius: var(--r-control);
   background: var(--shadow-30);
   color: var(--ink);
+  font-size: 12px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+
+.quick-open input::placeholder {
+  color: var(--muted);
+}
+
+
+.quick-open input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-10);
 }
 
 
@@ -855,7 +881,7 @@
   min-height: 0;
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 2px;
   overflow: auto;
 }
 
@@ -863,13 +889,24 @@
 .quick-open__result {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(90px, 0.36fr) minmax(0, 1fr) auto auto;
-  gap: 8px;
+  grid-template-columns: minmax(140px, 0.55fr) minmax(0, 1fr) auto auto;
+  gap: 10px;
   align-items: center;
-  min-height: 30px;
-  padding: 0 9px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
   text-align: left;
   color: var(--ink);
+  transition: background 120ms ease;
+}
+
+
+.quick-open__result > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 
@@ -878,25 +915,42 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
 }
 
 
-.quick-open__result i {
-  color: var(--accent);
-  font-size: 10px;
+.quick-open__result:hover {
+  background: var(--accent-07);
+}
+
+
+.quick-open__badge {
   font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: var(--r-pill);
+  color: var(--accent);
+  background: var(--accent-11);
+}
+
+
+.quick-open__badge--diag {
+  color: var(--danger);
+  background: rgba(var(--c-danger-rgb), 0.13);
 }
 
 
 .quick-open__result--active {
-  border-color: var(--line-strong);
   background: var(--accent-11);
 }
 
 
 .quick-open__result--selected {
   background: var(--accent-10);
-  outline: 1px solid var(--accent-07);
+  outline: 1px solid var(--accent-24);
+  outline-offset: -1px;
 }
 
 
