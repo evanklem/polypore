@@ -420,6 +420,7 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
     let setupRafId: number | null = null;
     let spawnRafId: number | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let resizeSettleTimer: number | null = null;
     let dataDisposable: { dispose: () => void } | null = null;
     let binaryDisposable: { dispose: () => void } | null = null;
     let cancelled = false;
@@ -579,8 +580,20 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
 
       resizeObserver = new ResizeObserver(() => {
         /* skip per-frame fit during sash drags — fitAddon.fit() is
-           expensive in JavaScriptCore; let it snap once on release instead. */
-        if (document.body.dataset.dvResizing) return;
+           expensive in JavaScriptCore. but the container reaches its final
+           size *during* the drag, so no observer event fires after release;
+           without a trailing fit the grid never contracts to a smaller pane
+           and the walls just clip it. debounce a single fit that lands once
+           drag movement settles (it resets on every drag step, so at most one
+           fit per pause/release rather than one per frame). */
+        if (document.body.dataset.dvResizing) {
+          if (resizeSettleTimer !== null) clearTimeout(resizeSettleTimer);
+          resizeSettleTimer = window.setTimeout(() => {
+            resizeSettleTimer = null;
+            requestAnimationFrame(propagateSize);
+          }, 120);
+          return;
+        }
         requestAnimationFrame(propagateSize);
       });
       resizeObserver.observe(container);
@@ -590,6 +603,7 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
       cancelled = true;
       if (setupRafId !== null) cancelAnimationFrame(setupRafId);
       if (spawnRafId !== null) cancelAnimationFrame(spawnRafId);
+      if (resizeSettleTimer !== null) clearTimeout(resizeSettleTimer);
       resizeObserver?.disconnect();
       dataDisposable?.dispose();
       binaryDisposable?.dispose();
