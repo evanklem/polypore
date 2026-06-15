@@ -6,6 +6,27 @@ Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable
 
 ---
 
+## Install
+
+Download the build for your platform from the [latest release](https://github.com/evanklem/polypore/releases/latest). Polypore updates itself after the first install.
+
+| Platform | File |
+|---|---|
+| Linux | `.AppImage` (any distro), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL) |
+| macOS | `.dmg` (Apple Silicon or Intel) |
+| Windows | `_x64_en-US.msi` or `_x64-setup.exe` |
+
+On Linux the AppImage needs FUSE (`fuse2` on Arch). Mark it executable and run it:
+
+```sh
+chmod +x Polypore_*_amd64.AppImage
+./Polypore_*_amd64.AppImage
+```
+
+To build from source instead, see [Getting started](#getting-started) below.
+
+---
+
 ## The idea
 
 The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE's release cycle. Polypore is structured to keep up. Every surface is a sandboxed panel behind a shared contract. Any piece of the IDE can be swapped, extended, or dropped without touching the core.
