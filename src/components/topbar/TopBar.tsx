@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { LaunchTarget } from '../../Launcher';
 import type { PanelType, UserWorkspacePreset, WorkspaceName } from '../../core/types';
-import { GitMenu } from './GitMenu';
+import { GitMenu, type GitNotice } from './GitMenu';
 import { ProjectMenu } from './ProjectMenu';
 import { WorkspaceMenu } from './WorkspaceMenu';
 import type { ProjectStatusResult, TauriInvoke } from './types';
@@ -44,6 +44,7 @@ export function TopBar({
   onDeletePreset,
 }: TopBarProps) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const [gitNotice, setGitNotice] = useState<GitNotice | null>(null);
   const headerRef = useRef<HTMLElement>(null);
   const [status, setStatus] = useState<ProjectStatusResult>({
     path: '',
@@ -85,6 +86,15 @@ export function TopBar({
     setOpenMenu((current) => (current === menu ? null : menu));
   };
 
+  /* git network actions report through a toast because the askpass modal
+     closes the menu mid-run. errors stay until dismissed; a success self-clears
+     after a few seconds so the chrome doesn't accumulate stale confirmations. */
+  useEffect(() => {
+    if (!gitNotice || gitNotice.tone !== 'ok') return;
+    const timer = window.setTimeout(() => setGitNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [gitNotice]);
+
   useEffect(() => {
     if (!openMenu) return;
     const handlePointerDown = (e: PointerEvent) => {
@@ -121,6 +131,7 @@ export function TopBar({
         isOpen={openMenu === 'git'}
         onToggle={toggle('git')}
         tauriInvoke={tauriInvoke}
+        onNotify={setGitNotice}
       />
       <WorkspaceMenu
         workspace={workspace}
@@ -141,6 +152,23 @@ export function TopBar({
       <button className="segment settings-button" title="settings" aria-label="settings" onClick={onOpenSettings}>settings</button>
       <button className="segment help-button" title="help" aria-label="help" onClick={onOpenHelp}>help</button>
       <div className="segment segment--brand">polypore v{__APP_VERSION__}</div>
+      {gitNotice && (
+        <div
+          className={`git-toast git-toast--${gitNotice.tone}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="git-toast__icon" aria-hidden="true">{gitNotice.tone === 'ok' ? '✓' : '!'}</span>
+          <span className="git-toast__text">{gitNotice.text}</span>
+          <button
+            className="git-toast__dismiss"
+            aria-label="dismiss notification"
+            onClick={() => setGitNotice(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </header>
   );
 }

@@ -10,9 +10,16 @@ const GIT_ACTIONS: ReadonlyArray<{ label: string; desc: string; action: string }
 ];
 
 /* Network operations need an explicit "it went through" confirmation — their
-raw output is easy to miss and looks the same on a no-op. status/log are queries
-whose output is the point, so a success banner there would just be noise. */
+raw output is easy to miss and looks the same on a no-op. They also pop the
+askpass modal mid-run, which closes this menu (TopBar's click-outside), so the
+result can't live in here; it rides a toast instead. status/log are queries
+whose output is the point and the menu stays open, so they skip the toast. */
 const CONFIRMS_SUCCESS: ReadonlySet<string> = new Set(['fetch', 'pull', 'push']);
+
+export interface GitNotice {
+  tone: 'ok' | 'error';
+  text: string;
+}
 
 export interface GitMenuProps {
   status: ProjectStatusResult;
@@ -20,21 +27,21 @@ export interface GitMenuProps {
   isOpen: boolean;
   onToggle: () => void;
   tauriInvoke: TauriInvoke;
+  onNotify?: (notice: GitNotice) => void;
 }
 
-export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke }: GitMenuProps) {
+export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke, onNotify }: GitMenuProps) {
   const branch = status.branch || 'no branch';
   const upstream = status.upstream || '';
   const [busy, setBusy] = useState('');
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const runGitAction = async (action: string) => {
+    const networked = CONFIRMS_SUCCESS.has(action);
     setBusy(action);
     setOutput('');
     setError('');
-    setSuccess('');
     try {
       const result = await tauriInvoke<GitRunResult>('git_run', { action });
       if (!result) throw new Error('desktop shell is not available');
@@ -44,11 +51,14 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
       setOutput(text);
       if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
         setError(`git ${action} failed (exit ${result.exitCode})`);
-      } else if (CONFIRMS_SUCCESS.has(action)) {
-        setSuccess(`git ${action} succeeded`);
+        if (networked) onNotify?.({ tone: 'error', text: `git ${action} failed (exit ${result.exitCode})` });
+      } else if (networked) {
+        onNotify?.({ tone: 'ok', text: `git ${action} succeeded` });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      if (networked) onNotify?.({ tone: 'error', text: `git ${action} failed: ${message}` });
     } finally {
       setBusy('');
     }
@@ -94,12 +104,6 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
               </button>
             ))}
           </div>
-          {success && (
-            <div className="git-menu__success" role="status">
-              <span className="git-menu__success-tick" aria-hidden="true">✓</span>
-              {success}
-            </div>
-          )}
           {output && <pre className="git-menu__output">{output}</pre>}
           {error && <div className="git-menu__error">{error}</div>}
         </div>

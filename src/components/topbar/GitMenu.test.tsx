@@ -46,7 +46,8 @@ test('a successful git action shows output without an error banner', async () =>
   expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
 });
 
-test('a successful push surfaces a success confirmation', async () => {
+test('a successful push notifies with a success confirmation', async () => {
+  const onNotify = vi.fn();
   const tauriInvoke = invokeWith({
     action: 'push',
     command: ['push'],
@@ -54,14 +55,31 @@ test('a successful push surfaces a success confirmation', async () => {
     output: 'Everything up-to-date',
   });
 
-  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} />);
+  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} onNotify={onNotify} />);
   fireEvent.click(screen.getByRole('menuitem', { name: /^push/i }));
 
-  expect(await screen.findByText('git push succeeded')).toBeInTheDocument();
-  expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
+  await screen.findByText('Everything up-to-date');
+  expect(onNotify).toHaveBeenCalledWith({ tone: 'ok', text: 'git push succeeded' });
 });
 
-test('a query action does not show a success banner', async () => {
+test('a failed push notifies with an error and still shows the output', async () => {
+  const onNotify = vi.fn();
+  const tauriInvoke = invokeWith({
+    action: 'push',
+    command: ['push'],
+    exitCode: 1,
+    output: 'error: failed to push some refs',
+  });
+
+  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} onNotify={onNotify} />);
+  fireEvent.click(screen.getByRole('menuitem', { name: /^push/i }));
+
+  await screen.findByText('error: failed to push some refs');
+  expect(onNotify).toHaveBeenCalledWith({ tone: 'error', text: 'git push failed (exit 1)' });
+});
+
+test('a query action does not notify', async () => {
+  const onNotify = vi.fn();
   const tauriInvoke = invokeWith({
     action: 'status',
     command: ['status'],
@@ -69,11 +87,11 @@ test('a query action does not show a success banner', async () => {
     output: 'On branch main',
   });
 
-  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} />);
+  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} onNotify={onNotify} />);
   fireEvent.click(screen.getByRole('menuitem', { name: /^status/i }));
 
-  expect(await screen.findByText('On branch main')).toBeInTheDocument();
-  expect(screen.queryByText(/succeeded/)).not.toBeInTheDocument();
+  await screen.findByText('On branch main');
+  expect(onNotify).not.toHaveBeenCalled();
 });
 
 test('a successful action refreshes the project status', async () => {
