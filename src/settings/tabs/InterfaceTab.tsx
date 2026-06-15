@@ -106,7 +106,7 @@ export function InterfaceTab({ setNotice }: InterfaceTabProps) {
       <section className="surface-section" aria-label="scale">
         <div className="surface-section__head">
           <h2>scale</h2>
-          <small>sizes the whole UI · independent of system scaling</small>
+          <small>sizes the whole ui · independent of system scaling</small>
         </div>
         <div className="appearance-zoom">
           <button

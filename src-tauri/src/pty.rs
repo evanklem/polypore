@@ -307,7 +307,9 @@ fn scrub_appimage_env(builder: &mut CommandBuilder) {
         "GSETTINGS_SCHEMA_DIR",
     ];
     for key in PATH_LISTS {
-        let Some(val) = std::env::var_os(key) else { continue };
+        let Some(val) = std::env::var_os(key) else {
+            continue;
+        };
         let kept: Vec<_> = std::env::split_paths(&val)
             .filter(|p| !p.starts_with(&appdir))
             .collect();
@@ -327,7 +329,9 @@ fn scrub_appimage_env(builder: &mut CommandBuilder) {
         "FONTCONFIG_FILE",
     ];
     for key in SINGLES {
-        let Some(val) = std::env::var_os(key) else { continue };
+        let Some(val) = std::env::var_os(key) else {
+            continue;
+        };
         if std::path::Path::new(&val).starts_with(&appdir) {
             builder.env_remove(key);
         }
