@@ -7,8 +7,12 @@ import {
   type InterfaceSettings,
   loadInterfaceSettings,
   normalizeAccent,
+  normalizeZoom,
   resetInterfaceSettings,
   saveInterfaceSettings,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
 } from '../settingsStorage';
 
 export interface InterfaceTabProps {
@@ -96,6 +100,44 @@ export function InterfaceTab({ setNotice }: InterfaceTabProps) {
         <div className="appearance-choices">
           <SettingPicker label="motion" value={settings.motion} options={MOTION_OPTIONS} onChange={(value) => update('motion', value)} />
           <SettingPicker label="surface" value={settings.glass} options={GLASS_OPTIONS} onChange={(value) => update('glass', value)} />
+        </div>
+      </section>
+
+      <section className="surface-section" aria-label="scale">
+        <div className="surface-section__head">
+          <h2>scale</h2>
+          <small>sizes the whole UI · independent of system scaling</small>
+        </div>
+        <div className="appearance-zoom">
+          <button
+            type="button"
+            className="appearance-zoom__step"
+            aria-label="decrease scale"
+            onClick={() => update('zoom', normalizeZoom(settings.zoom - ZOOM_STEP))}
+            disabled={settings.zoom <= ZOOM_MIN}
+          >
+            −
+          </button>
+          <input
+            type="range"
+            className="appearance-zoom__slider"
+            min={ZOOM_MIN}
+            max={ZOOM_MAX}
+            step={ZOOM_STEP}
+            value={settings.zoom}
+            aria-label="ui scale"
+            onChange={(event) => update('zoom', normalizeZoom(Number(event.target.value)))}
+          />
+          <button
+            type="button"
+            className="appearance-zoom__step"
+            aria-label="increase scale"
+            onClick={() => update('zoom', normalizeZoom(settings.zoom + ZOOM_STEP))}
+            disabled={settings.zoom >= ZOOM_MAX}
+          >
+            +
+          </button>
+          <span className="appearance-zoom__value">{Math.round(settings.zoom * 100)}%</span>
         </div>
       </section>
 

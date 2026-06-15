@@ -540,6 +540,28 @@
 .appearance-segmented button:hover { color: var(--ink); }
 .appearance-segmented button[aria-pressed='true'] { background: var(--accent-14); color: var(--accent); }
 
+.appearance-zoom { display: flex; align-items: center; gap: var(--sp-2); }
+.appearance-zoom__slider { flex: 1; min-width: 140px; accent-color: var(--accent); cursor: pointer; }
+.appearance-zoom__value {
+  min-width: 52px;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--s-body);
+  font-variant-numeric: tabular-nums;
+}
+.appearance-zoom__step {
+  padding: 5px 12px;
+  border: 1px solid var(--line-quiet);
+  border-radius: var(--r-control);
+  background: rgba(var(--c-surface-0-rgb), 0.34);
+  color: var(--muted);
+  font-size: var(--s-body);
+  cursor: pointer;
+  transition: color 120ms, background 120ms;
+}
+.appearance-zoom__step:hover:not(:disabled) { color: var(--ink); }
+.appearance-zoom__step:disabled { opacity: 0.4; cursor: default; }
+
 /* ── extensions ───────────────────────────────────────────────────────────── */
 
 .extensions-filter { max-width: 320px; }

@@ -9,9 +9,18 @@ export type InterfaceSettings = {
   accent: InterfaceAccent;
   motion: InterfaceMotion;
   glass: InterfaceGlass;
+  /* whole-UI zoom factor, applied as CSS `zoom` on the document root. lets
+     the user size the IDE independently of OS/compositor scaling (the px-based
+     layout has no rem root to drive, so font-size wouldn't cascade). */
+  zoom: number;
 };
 
 export const INTERFACE_SETTINGS_KEY = 'polypore.interfaceSettings.v1';
+
+export const ZOOM_MIN = 0.7;
+export const ZOOM_MAX = 1.5;
+export const ZOOM_STEP = 0.05;
+const DEFAULT_ZOOM = 1;
 
 /** named quick-pick swatches; the picker can choose anything else */
 export const ACCENT_PRESETS: Array<{ name: string; hex: string }> = [
@@ -27,7 +36,13 @@ export const DEFAULT_INTERFACE_SETTINGS: InterfaceSettings = {
   accent: '#f0b35a',
   motion: 'full',
   glass: 'frosted',
+  zoom: DEFAULT_ZOOM,
 };
+
+export function normalizeZoom(value: number | undefined): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : DEFAULT_ZOOM;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(n * 100) / 100));
+}
 
 /* legacy preset names → hex, so a v1 value stored as 'honey' still loads */
 const LEGACY_ACCENTS: Record<string, string> = {
@@ -52,6 +67,7 @@ function sanitizeSettings(value: Partial<InterfaceSettings> | null | undefined):
     accent: normalizeAccent(next.accent),
     motion: next.motion === 'reduced' ? 'reduced' : 'full',
     glass: next.glass === 'solid' ? 'solid' : 'frosted',
+    zoom: normalizeZoom(next.zoom),
   };
 }
 
@@ -91,6 +107,9 @@ export function applyInterfaceSettings(settings: InterfaceSettings): void {
   delete root.dataset.polyporeDensity;
   root.dataset.polyporeMotion = next.motion;
   root.dataset.polyporeGlass = next.glass;
+  /* `zoom` is non-standard but supported by WebKitGTK/Chromium; it re-rasterizes
+     so the UI stays sharp at any factor. setProperty avoids the typed-CSSOM gap. */
+  root.style.setProperty('zoom', String(next.zoom));
 }
 
 export function resetInterfaceSettings(): InterfaceSettings {

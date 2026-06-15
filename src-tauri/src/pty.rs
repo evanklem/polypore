@@ -74,6 +74,7 @@ pub fn pty_spawn(
     terminal so curses/rich/etc. emit color and cursor codes. */
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
+    scrub_appimage_env(&mut builder);
 
     let mut child = pair
         .slave
@@ -274,6 +275,63 @@ fn launcher(command: &str) -> (String, Vec<String>) {
             command.to_string(),
         ],
     )
+}
+
+/* when polypore runs as a linux AppImage, its AppRun injects bundle paths
+into the environment (LD_LIBRARY_PATH, GTK_PATH, GST_PLUGIN_*, …) so the
+shipped binary resolves its own libraries. those vars are inherited by every
+child we spawn — and a child that itself links GTK/WebKit (e.g. `tauri dev`
+launching a dev build of polypore) then loads the *bundle's* libraries and
+dies looking for a helper that only exists relative to the AppImage mount
+("Failed to spawn child process …/WebKitNetworkProcess"). strip the bundle
+injections so children resolve system libraries instead. no-op off AppImage. */
+fn scrub_appimage_env(builder: &mut CommandBuilder) {
+    let appdir = match std::env::var("APPDIR") {
+        Ok(dir) if !dir.is_empty() => dir,
+        _ => return,
+    };
+
+    /* colon-separated search paths: drop the segments that point into the
+    AppImage mount, keep any the user set themselves. */
+    const PATH_LISTS: &[&str] = &[
+        "LD_LIBRARY_PATH",
+        "PATH",
+        "XDG_DATA_DIRS",
+        "GTK_PATH",
+        "GST_PLUGIN_SYSTEM_PATH",
+        "GST_PLUGIN_SYSTEM_PATH_1_0",
+        "GIO_EXTRA_MODULES",
+        "GDK_PIXBUF_MODULEDIR",
+        "FONTCONFIG_PATH",
+        "LIBGL_DRIVERS_PATH",
+        "GSETTINGS_SCHEMA_DIR",
+    ];
+    for key in PATH_LISTS {
+        let Some(val) = std::env::var_os(key) else { continue };
+        let kept: Vec<_> = std::env::split_paths(&val)
+            .filter(|p| !p.starts_with(&appdir))
+            .collect();
+        if kept.is_empty() {
+            builder.env_remove(key);
+        } else if let Ok(joined) = std::env::join_paths(kept) {
+            builder.env(key, joined);
+        }
+    }
+
+    /* single-value pointers into the bundle: remove outright. */
+    const SINGLES: &[&str] = &[
+        "GDK_PIXBUF_MODULE_FILE",
+        "GIO_MODULE_DIR",
+        "GST_PLUGIN_SCANNER",
+        "WEBKIT_EXEC_PATH",
+        "FONTCONFIG_FILE",
+    ];
+    for key in SINGLES {
+        let Some(val) = std::env::var_os(key) else { continue };
+        if std::path::Path::new(&val).starts_with(&appdir) {
+            builder.env_remove(key);
+        }
+    }
 }
 
 fn now_ms() -> u128 {

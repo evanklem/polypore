@@ -610,6 +610,18 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
     const isExternalBrowserish = runUrlIsWebish && runKind !== 'desktop';
     const exited = exitCode !== null;
     const failed = exited && exitCode !== 0;
+    /* "embed instead" switches an external run into the in-panel view. only
+       offer it when the frozen run is actually embeddable — native runtimes
+       (tauri/electron) ship their own OS window and were refused embedding at
+       setup time, so offering it here would re-trigger the exact thing the
+       setup gate (canRunInWindow) blocks. mirrors that gate against currentRun. */
+    const runEmbeddable = !currentRun?.explicitNative && (
+      runKind === 'cli'
+      || runKind === 'test'
+      || runKind === 'site'
+      || runKind === 'game'
+      || (runKind === 'desktop' && runUrlIsWebish)
+    );
     const statusLabel = failed
       ? `process exited ${exitCode}`
       : exited
@@ -624,9 +636,11 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
             <span>{runUrl || runCommand}</span>
             <div className="preview-output__controls">
               <button onClick={() => void host.ui.openExternal(runUrl || '').catch(() => {})} disabled={!isExternalBrowserish} title="reopen the url in your browser">open url</button>
-              <button onClick={() => navigator.clipboard?.writeText(logs.join('') || runCommand).catch(() => {})} title="copy logs">copy logs</button>
+              <button onClick={() => { navigator.clipboard?.writeText(logs.join('') || runCommand).then(() => host.ui.notify('success', 'logs copied to clipboard')).catch(() => {}); }} title="copy logs">copy logs</button>
               <button onClick={() => void runOutside()} title="kill and rerun">restart</button>
-              <button onClick={() => void runInWindow()} title="switch to embedded mode">embed instead</button>
+              {runEmbeddable && (
+                <button onClick={() => void runInWindow()} title="switch to embedded mode">embed instead</button>
+              )}
               <button onClick={stopPreview} title="stop and return to setup">stop</button>
             </div>
           </header>
