@@ -646,8 +646,8 @@ pub async fn git_run(
     back at this binary, which the broker routes to a modal. GIT_TERMINAL_PROMPT
     stays 0 so a missing helper fails fast instead of hanging on a dead tty. */
     let askpass = broker.ensure_started(app)?;
-    let helper = std::env::current_exe()
-        .map_err(|err| format!("failed to locate askpass helper: {err}"))?;
+    let helper =
+        std::env::current_exe().map_err(|err| format!("failed to locate askpass helper: {err}"))?;
     let output = tokio::process::Command::new("git")
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")

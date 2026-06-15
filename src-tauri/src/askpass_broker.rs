@@ -246,7 +246,11 @@ fn handle_stream(
     }
 
     if method != "POST" || path != "/askpass" || !authed {
-        return write_json(&mut stream, 403, serde_json::json!({ "error": "forbidden" }));
+        return write_json(
+            &mut stream,
+            403,
+            serde_json::json!({ "error": "forbidden" }),
+        );
     }
     if content_length > MAX_BROKER_BODY_BYTES {
         return write_json(
@@ -411,7 +415,10 @@ mod tests {
         // proof the resolved secret was not retained.
         let second = prompts.resolve(&id, "second".to_string());
 
-        assert_eq!(second, Err("askpass prompt is no longer pending".to_string()));
+        assert_eq!(
+            second,
+            Err("askpass prompt is no longer pending".to_string())
+        );
         assert_eq!(waiter.wait().unwrap(), "first");
     }
 
