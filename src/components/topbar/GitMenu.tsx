@@ -9,6 +9,11 @@ const GIT_ACTIONS: ReadonlyArray<{ label: string; desc: string; action: string }
   { label: 'show log', desc: 'recent commit history', action: 'log' },
 ];
 
+/* Network operations need an explicit "it went through" confirmation — their
+raw output is easy to miss and looks the same on a no-op. status/log are queries
+whose output is the point, so a success banner there would just be noise. */
+const CONFIRMS_SUCCESS: ReadonlySet<string> = new Set(['fetch', 'pull', 'push']);
+
 export interface GitMenuProps {
   status: ProjectStatusResult;
   onStatusChange: (status: ProjectStatusResult) => void;
@@ -23,11 +28,13 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
   const [busy, setBusy] = useState('');
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const runGitAction = async (action: string) => {
     setBusy(action);
     setOutput('');
     setError('');
+    setSuccess('');
     try {
       const result = await tauriInvoke<GitRunResult>('git_run', { action });
       if (!result) throw new Error('desktop shell is not available');
@@ -37,6 +44,8 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
       setOutput(text);
       if (typeof result.exitCode === 'number' && result.exitCode !== 0) {
         setError(`git ${action} failed (exit ${result.exitCode})`);
+      } else if (CONFIRMS_SUCCESS.has(action)) {
+        setSuccess(`git ${action} succeeded`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -85,6 +94,12 @@ export function GitMenu({ status, onStatusChange, isOpen, onToggle, tauriInvoke 
               </button>
             ))}
           </div>
+          {success && (
+            <div className="git-menu__success" role="status">
+              <span className="git-menu__success-tick" aria-hidden="true">✓</span>
+              {success}
+            </div>
+          )}
           {output && <pre className="git-menu__output">{output}</pre>}
           {error && <div className="git-menu__error">{error}</div>}
         </div>

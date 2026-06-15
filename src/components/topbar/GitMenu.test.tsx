@@ -46,6 +46,36 @@ test('a successful git action shows output without an error banner', async () =>
   expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
 });
 
+test('a successful push surfaces a success confirmation', async () => {
+  const tauriInvoke = invokeWith({
+    action: 'push',
+    command: ['push'],
+    exitCode: 0,
+    output: 'Everything up-to-date',
+  });
+
+  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} />);
+  fireEvent.click(screen.getByRole('menuitem', { name: /^push/i }));
+
+  expect(await screen.findByText('git push succeeded')).toBeInTheDocument();
+  expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
+});
+
+test('a query action does not show a success banner', async () => {
+  const tauriInvoke = invokeWith({
+    action: 'status',
+    command: ['status'],
+    exitCode: 0,
+    output: 'On branch main',
+  });
+
+  render(<GitMenu status={status} onStatusChange={vi.fn()} isOpen onToggle={vi.fn()} tauriInvoke={tauriInvoke} />);
+  fireEvent.click(screen.getByRole('menuitem', { name: /^status/i }));
+
+  expect(await screen.findByText('On branch main')).toBeInTheDocument();
+  expect(screen.queryByText(/succeeded/)).not.toBeInTheDocument();
+});
+
 test('a successful action refreshes the project status', async () => {
   const onStatusChange = vi.fn();
   const tauriInvoke = invokeWith({

@@ -618,3 +618,21 @@
   background: rgba(90, 28, 20, 0.2);
   font-size: 11px;
 }
+
+
+.git-menu__success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(var(--c-ok-rgb), 0.34);
+  border-radius: var(--r-control);
+  color: var(--ok);
+  background: rgba(var(--c-ok-rgb), 0.1);
+  font-size: 11px;
+}
+
+
+.git-menu__success-tick {
+  font-weight: 600;
+}
