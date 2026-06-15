@@ -1499,19 +1499,11 @@ button:disabled:hover {
 }
 
 /* tone the workspace ambient orbs — they were so saturated they competed
-   with content. reducing opacity caps them at a quieter ambient glow. the
-   keyframes still animate but the result reads as accent haze, not a
-   light show. */
+   with content. reducing opacity caps them at a quieter ambient glow that
+   reads as accent haze, not a light show. (the orbs are static — see the
+   note in shell.css for why the drift animation was removed.) */
 .app-shell::before { opacity: 0.42; }
 .app-shell::after  { opacity: 0.36; }
-@keyframes ambient-orbs-a {
-  from { opacity: 0.30; transform: translate3d(-7%, -5%, 0) rotate(-5deg) scale(1); }
-  to   { opacity: 0.50; transform: translate3d(8%, 6%, 0) rotate(8deg) scale(1.10); }
-}
-@keyframes ambient-orbs-b {
-  from { opacity: 0.24; transform: translate3d(8%, 6%, 0) rotate(7deg) scale(1.06); }
-  to   { opacity: 0.46; transform: translate3d(-8%, -7%, 0) rotate(-9deg) scale(1); }
-}
 
 /* riced launcher background: the fungus photo was competing with the
    centered card. a soft vignette quiets the edges so the eye lands on

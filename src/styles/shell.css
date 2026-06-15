@@ -33,7 +33,9 @@
   opacity: 0.95;
   filter: blur(30px);
   transform: translate3d(0, 0, 0);
-  will-change: transform, opacity;
+  /* kept on its own compositor layer so panel repaints don't re-rasterize the
+     large inset:-34% blurred extent; the layer is static (see below). */
+  will-change: transform;
 }
 
 
@@ -42,7 +44,6 @@
     radial-gradient(circle at 14% 28%, var(--accent-45), transparent 20rem),
     radial-gradient(circle at 84% 20%, rgba(var(--c-accent-pale-rgb), 0.32), transparent 23rem),
     radial-gradient(circle at 62% 78%, var(--accent-deep-42), transparent 26rem);
-  animation: ambient-orbs-a 14s ease-in-out infinite alternate;
 }
 
 
@@ -51,35 +52,17 @@
     radial-gradient(circle at 30% 78%, var(--accent-deep-42), transparent 22rem),
     radial-gradient(circle at 88% 72%, var(--accent-40), transparent 20rem),
     radial-gradient(circle at 50% 34%, var(--ink-12), transparent 25rem);
-  animation: ambient-orbs-b 16s ease-in-out infinite alternate;
   mix-blend-mode: screen;
 }
 
-
-@keyframes ambient-orbs-a {
-  from {
-    opacity: 0.62;
-    transform: translate3d(-7%, -5%, 0) rotate(-5deg) scale(1);
-  }
-
-  to {
-    opacity: 0.9;
-    transform: translate3d(8%, 6%, 0) rotate(8deg) scale(1.12);
-  }
-}
-
-
-@keyframes ambient-orbs-b {
-  from {
-    opacity: 0.52;
-    transform: translate3d(8%, 6%, 0) rotate(7deg) scale(1.08);
-  }
-
-  to {
-    opacity: 0.84;
-    transform: translate3d(-8%, -7%, 0) rotate(-9deg) scale(1);
-  }
-}
+/* The ambient orbs are intentionally STATIC — a fixed accent haze, not an
+   animation. They used to drift/scale/pulse forever (ambient-orbs-a/b), but on
+   Tauri's Linux webview (WebKitGTK) backdrop-filter has no GPU fast path, so a
+   perpetually-animating blurred backdrop forced every frosted surface to
+   recomposite on the CPU every frame — pinning a core at 100% while idle. The
+   drift was near-imperceptible (30px blur, ~0.4 opacity, behind every panel),
+   so it was removed rather than gated. Do not reintroduce an infinite
+   animation here. */
 
 
 /* .app-shell > *:not(.polypore-loading) sets z-index: 2 at specificity 0,2,0,
