@@ -10,6 +10,11 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # Serialize the matrix: every job read-modify-writes the single shared
+      # updater manifest (latest.json) on the draft release. Running them in
+      # parallel races the delete-then-upload, and the loser hits
+      # "404 Not Found - delete-a-release-asset". One job at a time avoids it.
+      max-parallel: 1
       matrix:
         include:
           - platform: macos-latest
