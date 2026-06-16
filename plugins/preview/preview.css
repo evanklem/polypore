@@ -479,9 +479,13 @@
 
 .preview-terminal-frame {
   min-height: 0;
+  /* xterm manages its own viewport scrolling; keep the host non-scrolling so
+     there's no double scrollbar. the placeholder <pre> (shown for the brief
+     moment before the session id arrives) shares this class and stays quiet
+     too. */
   margin: 0;
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   border: 1px solid var(--accent-18);
   border-radius: var(--r-card);
   background: rgb(var(--c-surface-0-rgb));

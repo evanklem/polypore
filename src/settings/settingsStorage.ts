@@ -9,13 +9,20 @@ export type InterfaceSettings = {
   accent: InterfaceAccent;
   motion: InterfaceMotion;
   glass: InterfaceGlass;
-  /* whole-UI zoom factor, applied as CSS `zoom` on the document root. lets
-     the user size the IDE independently of OS/compositor scaling (the px-based
-     layout has no rem root to drive, so font-size wouldn't cascade). */
+  /* whole-UI zoom factor. applied as the webview's native page zoom in the
+     Tauri shell (and CSS `zoom` as a browser-dev fallback) so the user can
+     size the IDE independently of OS/compositor scaling. native zoom is used
+     rather than CSS `zoom` because CSS `zoom` re-rounds every line box to a
+     device pixel at fractional factors, which clips glyph descenders and the
+     line-highlight bands in Monaco, xterm, and the diff/preview panels. */
   zoom: number;
 };
 
 export const INTERFACE_SETTINGS_KEY = 'polypore.interfaceSettings.v1';
+
+/* fired on every persisted change so open UI (the Settings slider) can resync
+   when the value is changed from elsewhere, e.g. the global zoom hotkeys. */
+export const INTERFACE_SETTINGS_EVENT = 'polypore:interface-settings';
 
 export const ZOOM_MIN = 0.7;
 export const ZOOM_MAX = 1.5;
@@ -91,7 +98,13 @@ export function saveInterfaceSettings(settings: InterfaceSettings): InterfaceSet
     }
   }
   applyInterfaceSettings(next);
+  emitInterfaceSettings(next);
   return next;
+}
+
+function emitInterfaceSettings(next: InterfaceSettings): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(INTERFACE_SETTINGS_EVENT, { detail: next }));
 }
 
 export function applyInterfaceSettings(settings: InterfaceSettings): void {
@@ -107,9 +120,42 @@ export function applyInterfaceSettings(settings: InterfaceSettings): void {
   delete root.dataset.polyporeDensity;
   root.dataset.polyporeMotion = next.motion;
   root.dataset.polyporeGlass = next.glass;
-  /* `zoom` is non-standard but supported by WebKitGTK/Chromium; it re-rasterizes
-     so the UI stays sharp at any factor. setProperty avoids the typed-CSSOM gap. */
-  root.style.setProperty('zoom', String(next.zoom));
+  applyZoom(next.zoom);
+}
+
+type TauriWebview = { setZoom?: (factor: number) => Promise<void> };
+type TauriWebviewApi = { getCurrentWebview?: () => TauriWebview };
+
+function nativeWebview(): TauriWebviewApi | null {
+  if (typeof window === 'undefined') return null;
+  return (window as Window & { __TAURI__?: { webview?: TauriWebviewApi } }).__TAURI__?.webview ?? null;
+}
+
+/* native page zoom rasterizes per device pixel, so Monaco/xterm/diff/preview
+   lines never clip at fractional factors the way CSS `zoom` does. only the
+   browser-dev path (no scriptable native zoom) keeps the CSS `zoom` fallback. */
+function applyZoom(zoom: number): void {
+  const root = document.documentElement;
+  root.style.setProperty('--polypore-ui-zoom', String(zoom));
+  root.style.setProperty('--polypore-ui-hairline', `${Math.max(1, 1 / zoom).toFixed(4)}px`);
+  let webview: TauriWebview | undefined;
+  try {
+    webview = nativeWebview()?.getCurrentWebview?.();
+  } catch {
+    webview = undefined;
+  }
+  if (webview?.setZoom) {
+    root.style.removeProperty('zoom');
+    const fallbackToCssZoom = () => root.style.setProperty('zoom', String(zoom));
+    try {
+      // Tauri Webview methods read `this.label`, so keep the receiver intact.
+      Promise.resolve(webview.setZoom(zoom)).catch(fallbackToCssZoom);
+    } catch {
+      fallbackToCssZoom();
+    }
+    return;
+  }
+  root.style.setProperty('zoom', String(zoom));
 }
 
 export function resetInterfaceSettings(): InterfaceSettings {
@@ -121,5 +167,47 @@ export function resetInterfaceSettings(): InterfaceSettings {
     }
   }
   applyInterfaceSettings(DEFAULT_INTERFACE_SETTINGS);
+  emitInterfaceSettings(DEFAULT_INTERFACE_SETTINGS);
   return DEFAULT_INTERFACE_SETTINGS;
+}
+
+/* step the scale by one increment (1 = in, -1 = out, 0 = reset to 100%),
+   clamped to the slider range, and persist it through the same path the
+   Settings slider uses so the two stay in sync. */
+export function nudgeZoom(direction: 1 | -1 | 0): InterfaceSettings {
+  const current = loadInterfaceSettings();
+  const zoom = direction === 0
+    ? DEFAULT_ZOOM
+    : normalizeZoom(current.zoom + direction * ZOOM_STEP);
+  return saveInterfaceSettings({ ...current, zoom });
+}
+
+/* VS Code-style global scale hotkeys bound to the same persisted setting:
+   Ctrl/Cmd with '=' or '+' zooms in, with '-' zooms out, with '0' resets.
+   capture phase + preventDefault so the browser's own page zoom and the
+   focused Monaco/xterm surfaces don't also act on the chord. */
+export function registerZoomHotkeys(target: Window = window): () => void {
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
+    let direction: 1 | -1 | 0;
+    switch (event.key) {
+      case '=':
+      case '+':
+        direction = 1;
+        break;
+      case '-':
+      case '_':
+        direction = -1;
+        break;
+      case '0':
+        direction = 0;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    nudgeZoom(direction);
+  };
+  target.addEventListener('keydown', onKeyDown, { capture: true });
+  return () => target.removeEventListener('keydown', onKeyDown, { capture: true });
 }

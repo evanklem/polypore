@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ACCENT_PRESETS,
   DEFAULT_INTERFACE_SETTINGS,
+  INTERFACE_SETTINGS_EVENT,
   type InterfaceGlass,
   type InterfaceMotion,
   type InterfaceSettings,
@@ -31,6 +32,17 @@ const GLASS_OPTIONS: Array<{ value: InterfaceGlass; label: string }> = [
 
 export function InterfaceTab({ setNotice }: InterfaceTabProps) {
   const [settings, setSettings] = useState<InterfaceSettings>(() => loadInterfaceSettings());
+
+  /* the scale hotkeys (Ctrl/Cmd +/-/0) write the same setting from outside this
+     component; resync the slider when that happens so the two never drift. */
+  useEffect(() => {
+    const onChange = (event: Event) => {
+      const detail = (event as CustomEvent<InterfaceSettings>).detail;
+      if (detail) setSettings(detail);
+    };
+    window.addEventListener(INTERFACE_SETTINGS_EVENT, onChange);
+    return () => window.removeEventListener(INTERFACE_SETTINGS_EVENT, onChange);
+  }, []);
 
   const update = <K extends keyof InterfaceSettings>(key: K, value: InterfaceSettings[K]) => {
     const next = { ...settings, [key]: value };

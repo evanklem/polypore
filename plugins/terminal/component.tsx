@@ -4,48 +4,9 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { BuiltinPluginProps } from '../shared';
-import { PanelHeader, perfPoint } from '../shared';
+import { buildTerminalTheme, PanelHeader, perfPoint } from '../shared';
 import { loadInterfaceSettings } from '../../src/settings/settingsStorage';
 import { onTerminalSend, registerTerminalPanel, unregisterTerminalPanel } from '../../src/core/polypore-window';
-
-function buildTerminalTheme(accentHex: string): Record<string, string> {
-  let r = 240, g = 179, b = 90; // honey fallback
-  const clean = accentHex.replace('#', '');
-  if (/^[0-9a-fA-F]{6}$/.test(clean)) {
-    r = parseInt(clean.slice(0, 2), 16);
-    g = parseInt(clean.slice(2, 4), 16);
-    b = parseInt(clean.slice(4, 6), 16);
-  }
-  const hex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
-  const full = `#${hex(r)}${hex(g)}${hex(b)}`;
-  // pale variant: blend toward white for brightYellow
-  const pale = `#${hex(r + (255 - r) * 0.4)}${hex(g + (255 - g) * 0.4)}${hex(b + (255 - b) * 0.4)}`;
-  // selection: accent at ~40% alpha over opaque dark
-  const sel = `#${hex(r)}${hex(g)}${hex(b)}66`;
-  return {
-    background: '#00000000',
-    foreground: '#ffffff',
-    cursor: full,
-    cursorAccent: '#0d0a07',
-    selectionBackground: sel,
-    black: '#1a120c',
-    red: '#e07560',
-    green: '#a7c47a',
-    yellow: full,
-    blue: '#9bb8d8',
-    magenta: '#c89bd8',
-    cyan: '#8fc4c0',
-    white: '#ffffff',
-    brightBlack: '#5c4a32',
-    brightRed: '#f08a73',
-    brightGreen: '#bcd896',
-    brightYellow: pale,
-    brightBlue: '#b3ccea',
-    brightMagenta: '#dbb2ea',
-    brightCyan: '#a7d4d0',
-    brightWhite: '#ffffff',
-  };
-}
 
 /* quick-launch chips are a user-curated favorites list — the strip never
    records what gets typed into the terminal. an earlier build ranked chips
@@ -449,6 +410,33 @@ export function TerminalPanel({ host, header, context }: BuiltinPluginProps) {
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.loadAddon(new WebLinksAddon());
+
+      /* terminal copy/paste. plain ctrl+c can't copy here — it has to stay
+         SIGINT for the running program (claude, codex, a shell, …) — so we
+         use the linux-terminal convention: ctrl+shift+c copies the current
+         selection, ctrl+shift+v pastes. returning false tells xterm to
+         swallow the key so the sequence never reaches the pty. anything
+         else (including a bare ctrl+c with no shift) flows through. */
+      term.attachCustomKeyEventHandler((event) => {
+        if (event.type !== 'keydown' || !event.ctrlKey || !event.shiftKey) return true;
+        const key = event.key.toLowerCase();
+        if (key === 'c') {
+          const selection = term.getSelection();
+          if (selection) navigator.clipboard?.writeText(selection).catch(() => {});
+          return false;
+        }
+        if (key === 'v') {
+          /* route through term.paste so xterm applies bracketed-paste
+             wrapping when the program enabled it; the resulting onData
+             event forwards to the pty like any other input. */
+          navigator.clipboard?.readText().then((text) => {
+            if (text) term.paste(text);
+          }).catch(() => {});
+          return false;
+        }
+        return true;
+      });
+
       term.open(container);
       perfPoint(`terminal:xterm-open-done:${perfSession}`);
       termRef.current = term;

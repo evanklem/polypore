@@ -188,7 +188,14 @@
   height: 27px;
   max-width: 180px;
   padding: 0 4px 0 10px;
-  border: 1px solid var(--accent-18);
+  /* the outline is an inset box-shadow, not a `border`. at fractional UI scale
+     (notably 75%) a 1px layout border edge lands between device pixels and
+     antialiases to ~nothing, so the outline vanishes until a relayout (a sash
+     drag) nudges it onto a clean pixel. an inset shadow is painted into the
+     element's own raster instead of as a snapped layout edge, so it survives
+     those sub-pixel offsets. */
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--accent-18);
   border-radius: var(--r-control);
   background: var(--shadow-20);
   color: var(--muted);
@@ -214,9 +221,10 @@
 
 .polypore-dockview .dv-active-tab {
   color: var(--ink);
-  border-color: var(--line-strong);
   background: var(--ink-13);
-  box-shadow: inset 0 0 22px rgba(var(--c-ink-rgb), 0.08);
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong),
+    inset 0 0 22px rgba(var(--c-ink-rgb), 0.08);
   backdrop-filter: var(--blur-overlay);
   -webkit-backdrop-filter: var(--blur-overlay);
 }
@@ -266,7 +274,8 @@
   padding: 0;
   color: var(--accent);
   background: var(--shadow-20);
-  border: 1px solid var(--accent-18);
+  border: 0;
+  box-shadow: inset 0 0 0 1px var(--accent-18);
   border-radius: var(--r-control);
   font-size: 17px;
   line-height: 1;
@@ -276,7 +285,30 @@
 
 .dockview-add__button:hover {
   color: var(--accent);
-  border-color: var(--accent-42);
+  box-shadow: inset 0 0 0 1px var(--accent-42);
+}
+
+
+/* the last tab's right edge sits flush against the tabs container's content
+   edge; at fractional UI scale (75%) that flush edge gets its rightmost column
+   cropped. a small trailing margin lifts it off the boundary so the outline
+   stays whole. (verified: floating the tab free of the edge renders clean.) */
+.polypore-dockview .dv-tabs-container > .dv-tab:last-child {
+  margin-inline-end: 4px;
+}
+
+/* keyboard-focus ring. the global [role='tab']:focus-visible rule in glass.css
+   lands on our inner .polypore-tab element, which is inset inside the .dv-tab
+   pill by the pill's padding — so the ring hugged the inner content, not the
+   pill. draw it on the pill instead, inset so it follows the pill's own corners
+   and never extends past them (a positive outline-offset rasterizes lopsided at
+   fractional scale). */
+.polypore-dockview .polypore-tab:focus-visible {
+  outline: none;
+}
+.polypore-dockview .dv-tab:has(.polypore-tab:focus-visible) {
+  outline: 2px solid var(--hg-accent);
+  outline-offset: -2px;
 }
 
 

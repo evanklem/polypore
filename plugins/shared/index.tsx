@@ -303,3 +303,4 @@ export {
   type DiagnosticProblem,
   type DiagnosticProblemSeverity,
 } from './diagnostics';
+export { buildTerminalTheme, ansiToText } from './terminal-view';

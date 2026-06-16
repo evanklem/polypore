@@ -47,6 +47,7 @@
             "core:event:default",
             "core:window:default",
             "core:webview:default",
+            "core:webview:allow-set-webview-zoom",
             "updater:default"
           ]
         }

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { BuiltinPluginProps } from '../shared';
-import { PanelHeader, ResizeHandle, useResizableSplit } from '../shared';
+import { ansiToText, PanelHeader, ResizeHandle, useResizableSplit } from '../shared';
+import { PreviewTerminal } from './PreviewTerminal';
 import {
   applyUrlOverrideToCommand,
   detectRuntimes,
@@ -22,35 +23,6 @@ import {
   storeRuntimePreference,
 } from './detect';
 import type { DetectedRuntime, DetectedScript, PreviewTargetKind } from './detect';
-
-// eslint-disable-next-line no-control-regex
-const ANSI_RE = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
-const stripAnsi = (s: string) => s.replace(ANSI_RE, '');
-
-function terminalInputForKey(event: React.KeyboardEvent): string {
-  if (event.ctrlKey && event.key.length === 1) {
-    const code = event.key.toUpperCase().charCodeAt(0);
-    if (code >= 64 && code <= 95) return String.fromCharCode(code - 64);
-  }
-  const specialKeys: Record<string, string> = {
-    Enter: '\r',
-    Backspace: '\x7f',
-    Tab: '\t',
-    Escape: '\x1b',
-    ArrowUp: '\x1b[A',
-    ArrowDown: '\x1b[B',
-    ArrowRight: '\x1b[C',
-    ArrowLeft: '\x1b[D',
-    Home: '\x1b[H',
-    End: '\x1b[F',
-    Delete: '\x1b[3~',
-    PageUp: '\x1b[5~',
-    PageDown: '\x1b[6~',
-  };
-  if (specialKeys[event.key]) return specialKeys[event.key];
-  if (!event.ctrlKey && !event.altKey && !event.metaKey && event.key.length === 1) return event.key;
-  return '';
-}
 
 type CurrentRun = {
   command: string;
@@ -92,7 +64,6 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
   const commandRef = useRef('');
   const sessionIdRef = useRef('');
   const currentRunRef = useRef<CurrentRun | null>(null);
-  const terminalFrameRef = useRef<HTMLPreElement | null>(null);
   /* tracks whether the user has interacted with the setup form. used to
      skip the preview.list() rehydration race that would otherwise clobber
      a fresh selection with the first-ever-registered target. */
@@ -236,17 +207,9 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
   useEffect(() => {
     const node = logPaneRef.current;
     if (node && stickToBottomRef.current) node.scrollTop = node.scrollHeight;
-    const termNode = terminalFrameRef.current;
-    if (termNode) termNode.scrollTop = termNode.scrollHeight;
     const drawerNode = logDrawerRef.current;
     if (drawerNode) drawerNode.scrollTop = drawerNode.scrollHeight;
   }, [logs]);
-
-  useEffect(() => {
-    if (status === 'running' && mode === 'window' && currentRun && (currentRun.kind === 'cli' || currentRun.kind === 'test') && !runUrlIsWebish) {
-      terminalFrameRef.current?.focus();
-    }
-  }, [currentRun, mode, runUrlIsWebish, status]);
 
   const pickRuntime = (nextRuntime: DetectedRuntime) => {
     userTouchedRef.current = true;
@@ -466,22 +429,6 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
     host.preview.refresh().catch(() => {});
   };
 
-  const sendTerminalKey = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (!sessionId) return;
-    const data = terminalInputForKey(event);
-    if (!data) return;
-    event.preventDefault();
-    host.terminal.write(sessionId, data).catch(() => {});
-  };
-
-  const sendTerminalPaste = (event: React.ClipboardEvent<HTMLElement>) => {
-    if (!sessionId) return;
-    const text = event.clipboardData.getData('text');
-    if (!text) return;
-    event.preventDefault();
-    host.terminal.write(sessionId, text).catch(() => {});
-  };
-
   const stopPreview = () => {
     if (sessionId) {
       host.terminal.stop(sessionId).catch(() => {});
@@ -560,7 +507,7 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
                 <span>exit code {exitCode}</span>
               </header>
               <pre className="preview-error__log" aria-label="command error output">
-                {stripAnsi(logs.join('').trimEnd()) || `$ ${runCommand}\n(no output captured)`}
+                {ansiToText(logs.join('')).trimEnd() || `$ ${runCommand}\n(no output captured)`}
               </pre>
               <footer>
                 <button onClick={() => void runInWindow()}>retry</button>
@@ -575,16 +522,11 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
               src={runUrl}
               sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
             />
+          ) : sessionId ? (
+            <PreviewTerminal key={sessionId} host={host} sessionId={sessionId} />
           ) : (
-            <pre
-              ref={terminalFrameRef}
-              className="preview-terminal-frame"
-              aria-label="interactive preview terminal"
-              tabIndex={0}
-              onKeyDown={sendTerminalKey}
-              onPaste={sendTerminalPaste}
-            >
-              {stripAnsi(logs.join('')) || `$ ${runCommand}\n`}
+            <pre className="preview-terminal-frame" aria-label="interactive preview terminal">
+              {`$ ${runCommand}\n`}
             </pre>
           )}
           {logsOpen && (
@@ -597,7 +539,7 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
                 <button onClick={() => setLogsOpen(false)}>close</button>
               </header>
               <pre ref={logDrawerRef}>
-                {stripAnsi(logs.join('')) || `$ ${runCommand}\nwaiting for preview output...\n`}
+                {ansiToText(logs.join('')) || `$ ${runCommand}\nwaiting for preview output...\n`}
               </pre>
             </aside>
           )}
@@ -636,7 +578,7 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
             <span>{runUrl || runCommand}</span>
             <div className="preview-output__controls">
               <button onClick={() => void host.ui.openExternal(runUrl || '').catch(() => {})} disabled={!isExternalBrowserish} title="reopen the url in your browser">open url</button>
-              <button onClick={() => { navigator.clipboard?.writeText(logs.join('') || runCommand).then(() => host.ui.notify('success', 'logs copied to clipboard')).catch(() => {}); }} title="copy logs">copy logs</button>
+              <button onClick={() => { navigator.clipboard?.writeText(ansiToText(logs.join('')) || runCommand).then(() => host.ui.notify('success', 'logs copied to clipboard')).catch(() => {}); }} title="copy logs">copy logs</button>
               <button onClick={() => void runOutside()} title="kill and rerun">restart</button>
               {runEmbeddable && (
                 <button onClick={() => void runInWindow()} title="switch to embedded mode">embed instead</button>
@@ -655,7 +597,7 @@ export function PreviewPanel({ header, host }: BuiltinPluginProps) {
               stickToBottomRef.current = distanceFromBottom < 24;
             }}
           >
-            {logs.join('') || `$ ${runCommand}\nwaiting for preview output...\n`}
+            {ansiToText(logs.join('')) || `$ ${runCommand}\nwaiting for preview output...\n`}
           </pre>
         </section>
       </div>

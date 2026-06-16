@@ -104,7 +104,13 @@ input {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
-  line-height: 1;
+  /* the ellipsis needs overflow:hidden, which clips the line box on BOTH axes
+     (overflow-x:hidden alone is impossible). line-height:1 makes that box
+     exactly 1em tall, so glyph descenders (p, g, q, y) fall outside it and get
+     shaved — and sub-pixel rounding at some ui scales makes it come and go.
+     enough leading to hold the descenders; the label stays centered in the
+     tab so nothing shifts. */
+  line-height: 1.4;
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
