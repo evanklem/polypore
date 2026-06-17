@@ -602,6 +602,12 @@ async function handleTool(name, args = {}) {
     }
     state.plugins = state.plugins.map((plugin) => plugin.id === args.id ? { ...plugin, enabled } : plugin);
     await writeState(state);
+    /* keep the on-disk install.json in sync so boot rehydration reflects the
+       toggle. best-effort: a built-in or unstaged plugin has no dir. */
+    await updateInstallRecord(args.id, { enabled }).catch(() => {});
+    if (hostRpcConfigured()) {
+      await hostRpcCall(enabled ? 'plugins.enable' : 'plugins.disable', { id: args.id }).catch(() => {});
+    }
     return { enabled, id: args.id };
   }
   if (name === 'polypore.plugins.uninstall') {
@@ -614,6 +620,9 @@ async function handleTool(name, args = {}) {
     }
     state.plugins = state.plugins.filter((plugin) => plugin.id !== args.id);
     await writeState(state);
+    /* remove the installed bundle from disk so it does not get resurrected by
+       boot rehydration and does not leak orphaned files. */
+    await fs.rm(path.join(projectDir, 'plugins', args.id), { recursive: true, force: true });
     if (hostRpcConfigured()) await hostRpcCall('plugins.uninstall', { id: args.id });
     return { uninstalled: true, id: args.id };
   }
@@ -1373,11 +1382,34 @@ async function installPlugin(state, args) {
   const target = path.join(projectDir, 'plugins', inspection.manifest.id);
   await fs.rm(target, { recursive: true, force: true });
   await copyDir(stagedRoot, target);
-  const plugin = { id: inspection.manifest.id, enabled: true, scope, source: target, permissions: inspection.manifest.permissions ?? [] };
+  /* the plugin:// scheme serves <projectRoot>/.polypore/plugins/<id>/,
+     defaulting to index.html. point the renderer at the manifest's declared
+     entry so the installed bundle mounts as a URL-mode iframe panel. */
+  const entry = inspection.manifest.entry || 'index.html';
+  const entryUrl = `plugin://${inspection.manifest.id}/${entry}`;
+  const installedAt = Date.now();
+  /* drop a self-describing record next to the bundle so the host can rehydrate
+     installed plugins at boot by scanning the dirs, without depending on the
+     sidecar's own state file. */
+  await fs.writeFile(
+    path.join(target, 'install.json'),
+    `${JSON.stringify({ enabled: true, scope, installedAt, source: target }, null, 2)}\n`,
+  );
+  const plugin = {
+    id: inspection.manifest.id,
+    version: inspection.manifest.version ?? '0.0.0',
+    enabled: true,
+    installedAt,
+    scope,
+    source: target,
+    permissions: inspection.manifest.permissions ?? [],
+    manifest: inspection.manifest,
+    entryUrl,
+  };
   state.plugins = [plugin, ...state.plugins.filter((item) => item.id !== plugin.id)];
   await writeState(state);
   if (hostRpcConfigured()) {
-    await hostRpcCall('plugins.install', { plugin, manifest: inspection.manifest, source: target, scope });
+    await hostRpcCall('plugins.install', { plugin, manifest: inspection.manifest, source: target, scope, entryUrl });
   }
   return { installed: true, plugin };
 }
@@ -1862,6 +1894,19 @@ async function copyDir(source, target) {
     if (entry.isDirectory()) await copyDir(src, dst);
     else await fs.copyFile(src, dst);
   }
+}
+
+/* merge a patch into an installed plugin's install.json. throws if the plugin
+   has no dir on disk (built-in or never staged); callers swallow that. */
+async function updateInstallRecord(id, patch) {
+  const recordPath = path.join(projectDir, 'plugins', id, 'install.json');
+  let current = {};
+  try {
+    current = JSON.parse(await fs.readFile(recordPath, 'utf8'));
+  } catch {
+    current = {};
+  }
+  await fs.writeFile(recordPath, `${JSON.stringify({ ...current, ...patch }, null, 2)}\n`);
 }
 
 async function handle(message) {

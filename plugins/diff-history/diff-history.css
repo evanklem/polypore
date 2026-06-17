@@ -654,6 +654,8 @@
 .diff-column header {
   position: sticky;
   top: 0;
+  /* pin left too so the file-label bar stays put while code scrolls sideways. */
+  left: 0;
   z-index: 1;
   min-height: 28px;
   display: flex;
@@ -670,6 +672,10 @@
   flex: 0 0 auto;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
+  /* size to the widest line so the column scrolls sideways for long code, but
+     never below the column width so the row tint spans the full gutter. */
+  width: max-content;
+  min-width: 100%;
   min-height: 24px;
   align-items: stretch;
   color: var(--ink);
@@ -693,8 +699,9 @@
   min-width: 0;
   display: block;
   padding: 4px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* preserve runs of whitespace and let long lines extend past the column so
+     the column's overflow:auto exposes a horizontal scrollbar instead of
+     truncating the line. */
   white-space: pre;
   color: inherit;
 }

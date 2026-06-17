@@ -311,6 +311,13 @@ export type SkillPublisher = {
   unpublish: (id: string) => Promise<{ unpublished: string[] }>;
   delete: (id: string) => Promise<void>;
 };
+/* persists enable/disable/uninstall of an installed (URL-mode) plugin to the
+   on-disk registry so the change survives a restart. host-side handlers call
+   it best-effort; built-in plugins have no on-disk record and are skipped. */
+export type PluginStoreAdapter = {
+  setEnabled: (id: string, enabled: boolean) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+};
 export type TaskAdapter = {
   list?: () => Promise<Task[]>;
   add?: (task: Partial<Task> & { label: string }) => Promise<Task>;
@@ -777,6 +784,7 @@ export class HostRpcServer {
   private externalOpener: ExternalOpener | null = null;
   private fileSystemAdapter: FileSystemAdapter | null = null;
   private skillPublisher: SkillPublisher | null = null;
+  private pluginStore: PluginStoreAdapter | null = null;
   private taskAdapter: TaskAdapter | null = null;
   private verifyAdapter: VerifyAdapter | null = null;
   private knowledgeAdapter: KnowledgeAdapter | null = null;
@@ -981,6 +989,10 @@ export class HostRpcServer {
 
   setSkillPublisher(publisher: SkillPublisher | null) {
     this.skillPublisher = publisher;
+  }
+
+  setPluginStore(store: PluginStoreAdapter | null) {
+    this.pluginStore = store;
   }
 
   setTaskAdapter(adapter: TaskAdapter | null) {

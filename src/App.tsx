@@ -691,6 +691,16 @@ if (hasTauriInvoke()) {
       await result;
     },
   });
+  appHostServer.setPluginStore({
+    setEnabled: async (id, enabled) => {
+      const result = tauriInvoke<void>('plugins_set_installed_enabled', { id, enabled });
+      if (result) await result;
+    },
+    remove: async (id) => {
+      const result = tauriInvoke<void>('plugins_remove_installed', { id });
+      if (result) await result;
+    },
+  });
   appHostServer.setTaskAdapter({
     list: async () => {
       const tasks = tauriInvoke<Task[]>('tasks_list');
@@ -1663,7 +1673,10 @@ function App() {
          these are keyed by manifest.id as the slot so they join the merged
          pluginsBySlot map and appear in the dockview panel strip. */
       const external = refs.flatMap((ref) => {
-        if (PLUGINS_BY_SLOT.has(ref.id)) return [];
+        /* a built-in slot is owned by the bundled plugin; a disabled external
+           plugin stays registered (so the catalog can re-enable it) but is kept
+           out of the rendered tab strip. */
+        if (PLUGINS_BY_SLOT.has(ref.id) || ref.enabled === false) return [];
         const plugin = externalPluginFromRef(ref);
         return plugin ? [plugin] : [];
       });
@@ -1673,7 +1686,23 @@ function App() {
     const loadPlugins = () => {
       appHost.plugins.list().then(({ plugins }) => applyPluginRefs(plugins)).catch(() => {});
     };
-    loadPlugins();
+
+    /* rehydrate plugins installed in a previous session: the desktop host reads
+       the on-disk .polypore/plugins/ registry and registers each one so its
+       panel renders on every launch. no-op in browser preview (no Tauri). */
+    const hydrateInstalledPlugins = async () => {
+      const result = tauriInvoke<PluginRef[]>('plugins_list_installed');
+      if (!result) return;
+      try {
+        const records = await result;
+        if (cancelled) return;
+        for (const record of records) {
+          await appHost.plugins.install(record);
+        }
+      } catch { /* installed-plugin registry is optional */ }
+    };
+
+    void hydrateInstalledPlugins().finally(loadPlugins);
     const unsubscribe = appHostServer.subscribe('plugins:changed', (payload) => {
       const plugins = typeof payload === 'object' && payload && 'plugins' in payload
         ? (payload as { plugins?: PluginRef[] }).plugins
@@ -1912,6 +1941,13 @@ function App() {
     tauriInvoke<Array<Record<string, unknown>>>('skill_list')?.then((userSkills) => {
       for (const skill of userSkills ?? []) {
         appHostServer.handle({ kind: 'request', id: nextHostRpcId(), method: 'skills.write', params: skill }).catch(() => {});
+      }
+    }).catch(() => {});
+    /* hydrate installed plugins from the newly opened project's on-disk registry
+       so third-party panels show up without a restart. */
+    tauriInvoke<PluginRef[]>('plugins_list_installed')?.then((records) => {
+      for (const record of records ?? []) {
+        appHostServer.handle({ kind: 'request', id: nextHostRpcId(), method: 'plugins.install', params: { plugin: record } }).catch(() => {});
       }
     }).catch(() => {});
     setContextItems([]);

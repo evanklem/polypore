@@ -567,6 +567,100 @@ describe('HostRpcServer real-data adapters', () => {
     if (!uninstall.ok) expect(uninstall.error.message).toContain('plugin not found');
   });
 
+  test('plugins.install carries manifest + entryUrl through to the listed ref', async () => {
+    const server = new HostRpcServer();
+    const entryUrl = `plugin://${testPanelManifest.id}/index.html`;
+
+    /* the sidecar hands a bare plugin record plus the manifest/entryUrl as
+       siblings. the renderer reconstructs a URL-mode iframe panel only when
+       both manifest and entryUrl land on the PluginRef. */
+    const installed = await server.handle({
+      kind: 'request',
+      id: 90,
+      method: 'plugins.install',
+      params: {
+        plugin: {
+          id: testPanelManifest.id,
+          version: '0.1.0',
+          scope: 'project',
+          enabled: true,
+          installedAt: 1,
+          source: '/tmp/staged',
+          permissions: testPanelManifest.permissions,
+        },
+        manifest: testPanelManifest,
+        scope: 'project',
+        entryUrl,
+      },
+    });
+
+    expect(installed.ok).toBe(true);
+    if (installed.ok) {
+      const { plugin } = installed.result as { plugin: { manifest?: unknown; entryUrl?: string } };
+      expect(plugin.manifest).toEqual(testPanelManifest);
+      expect(plugin.entryUrl).toBe(entryUrl);
+    }
+
+    const listed = await server.handle({ kind: 'request', id: 91, method: 'plugins.list', params: {} });
+    expect(listed.ok).toBe(true);
+    if (listed.ok) {
+      const { plugins } = listed.result as { plugins: Array<{ id: string; manifest?: unknown; entryUrl?: string }> };
+      const ref = plugins.find((p) => p.id === testPanelManifest.id);
+      expect(ref?.manifest).toEqual(testPanelManifest);
+      expect(ref?.entryUrl).toBe(entryUrl);
+    }
+  });
+
+  test('plugins.disable and plugins.uninstall persist through the plugin-store adapter', async () => {
+    const server = new HostRpcServer({
+      plugins: [{
+        id: 'acme.widget',
+        version: '1.0.0',
+        scope: 'project',
+        enabled: true,
+        installedAt: 1,
+        source: '/installed',
+      }],
+    });
+    const setEnabled = vi.fn(async () => {});
+    const remove = vi.fn(async () => {});
+    server.setPluginStore({ setEnabled, remove });
+
+    const disabled = await server.handle({
+      kind: 'request', id: 80, method: 'plugins.disable', params: { id: 'acme.widget' },
+    });
+    expect(disabled.ok).toBe(true);
+    expect(setEnabled).toHaveBeenCalledWith('acme.widget', false);
+
+    const enabled = await server.handle({
+      kind: 'request', id: 81, method: 'plugins.enable', params: { id: 'acme.widget' },
+    });
+    expect(enabled.ok).toBe(true);
+    expect(setEnabled).toHaveBeenCalledWith('acme.widget', true);
+
+    const uninstalled = await server.handle({
+      kind: 'request', id: 82, method: 'plugins.uninstall', params: { id: 'acme.widget' },
+    });
+    expect(uninstalled.ok).toBe(true);
+    expect(remove).toHaveBeenCalledWith('acme.widget');
+
+    const listed = await server.handle({ kind: 'request', id: 83, method: 'plugins.list', params: {} });
+    if (listed.ok) {
+      const { plugins } = listed.result as { plugins: Array<{ id: string }> };
+      expect(plugins.find((p) => p.id === 'acme.widget')).toBeUndefined();
+    }
+  });
+
+  test('plugin toggles still succeed without a plugin-store adapter', async () => {
+    const server = new HostRpcServer({
+      plugins: [{ id: 'acme.widget', version: '1.0.0', scope: 'project', enabled: true, installedAt: 1, source: '/x' }],
+    });
+    const disabled = await server.handle({
+      kind: 'request', id: 84, method: 'plugins.disable', params: { id: 'acme.widget' },
+    });
+    expect(disabled.ok).toBe(true);
+  });
+
   test('panel.open publishes the requested target area', async () => {
     const server = new HostRpcServer();
     const opened: unknown[] = [];

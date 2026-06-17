@@ -9,6 +9,8 @@ use tauri::{
     Runtime, UriSchemeContext,
 };
 
+use crate::project_context;
+
 pub fn handle<R: Runtime>(
     _ctx: UriSchemeContext<'_, R>,
     request: Request<Vec<u8>>,
@@ -21,7 +23,11 @@ pub fn handle<R: Runtime>(
 
 fn resolve_request_path(uri: &tauri::http::Uri) -> Result<PathBuf, (StatusCode, &'static str)> {
     let (plugin_id, relative_path) = parse_plugin_uri(uri)?;
-    let plugin_root = std::env::current_dir()
+    /* serve from the active project's .polypore/plugins/<id>/, matching where the
+       installer copies bundles. active_project_root honors POLYPORE_PROJECT_ROOT
+       (set when a different folder is opened) and the src-tauri dev case, so a
+       packaged build does not fall back to an arbitrary cwd. */
+    let plugin_root = project_context::active_project_root()
         .map_err(|_| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,

@@ -24,6 +24,7 @@ import type {
   McpInstaller,
   McpServerRecord,
   McpTester,
+  PluginStoreAdapter,
   RpcHandler,
   SecretDeleter,
   SecretRevealer,
@@ -60,6 +61,7 @@ export interface HostInternals {
 
   /* plugins */
   plugins: PluginRef[];
+  pluginStore: PluginStoreAdapter | null;
 
   /* skills + skillsets */
   skills: SkillRecord[];

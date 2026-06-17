@@ -17,6 +17,7 @@ mod mcp_super;
 mod notifications;
 mod persistence;
 mod plugin_protocol;
+mod plugin_store;
 mod preview_native;
 mod project;
 mod project_context;
@@ -163,6 +164,9 @@ fn main() {
             webdriver::debug_web_fill,
             webdriver::debug_web_login,
             webdriver::debug_web_stop,
+            plugin_store::plugins_list_installed,
+            plugin_store::plugins_set_installed_enabled,
+            plugin_store::plugins_remove_installed,
             pty::pty_spawn,
             pty::pty_stop,
             pty::pty_write,

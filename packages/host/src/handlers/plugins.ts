@@ -8,17 +8,21 @@ import { normalizeConfirmDecision } from '../rpc-server';
 
 export function registerPluginsHandlers(host: HostInternals) {
   host.registerHandler('plugins.list', () => ({ plugins: [...host.plugins] }));
-  host.registerHandler('plugins.enable', (params) => {
+  host.registerHandler('plugins.enable', async (params) => {
     const { id } = params as { id: string };
     if (!host.plugins.some((p) => p.id === id)) throw new Error(`plugin not found: ${id}`);
     host.plugins = host.plugins.map((p) => (p.id === id ? { ...p, enabled: true } : p));
+    /* persist to the on-disk registry so the toggle survives a restart;
+       built-in plugins have no record and the adapter no-ops. */
+    await host.pluginStore?.setEnabled(id, true).catch(() => {});
     host.publish('plugins:changed', { plugins: host.plugins });
     return { enabled: true, id };
   });
-  host.registerHandler('plugins.disable', (params) => {
+  host.registerHandler('plugins.disable', async (params) => {
     const { id } = params as { id: string };
     if (!host.plugins.some((p) => p.id === id)) throw new Error(`plugin not found: ${id}`);
     host.plugins = host.plugins.map((p) => (p.id === id ? { ...p, enabled: false } : p));
+    await host.pluginStore?.setEnabled(id, false).catch(() => {});
     host.publish('plugins:changed', { plugins: host.plugins });
     return { disabled: true, id };
   });
@@ -48,7 +52,11 @@ export function registerPluginsHandlers(host: HostInternals) {
          BuiltinPlugin with iframe: { url } when plugins:changed fires. */
       entryUrl?: string;
     };
-    const ref: PluginRef = plugin ?? {
+    /* a caller may hand us a ready-made plugin record, or just the manifest +
+       entryUrl. either way the renderer needs both manifest and entryUrl on the
+       PluginRef to reconstruct a URL-mode iframe panel, so merge the sibling
+       params in when the provided record is missing them. */
+    const base: PluginRef = plugin ?? {
       id: manifest?.id ?? `plugin-${Date.now()}`,
       version: manifest?.version ?? '0.0.0',
       scope: scope ?? 'project',
@@ -56,8 +64,11 @@ export function registerPluginsHandlers(host: HostInternals) {
       installedAt: Date.now(),
       source: source ?? 'staged',
       permissions: manifest?.permissions ?? [],
-      ...(manifest ? { manifest } : {}),
-      ...(entryUrl ? { entryUrl } : {}),
+    };
+    const ref: PluginRef = {
+      ...base,
+      ...(manifest && !base.manifest ? { manifest } : {}),
+      ...(entryUrl && !base.entryUrl ? { entryUrl } : {}),
     };
     host.plugins = [ref, ...host.plugins.filter((item) => item.id !== ref.id)];
     host.publish('plugins:changed', { plugins: host.plugins });
@@ -72,10 +83,13 @@ export function registerPluginsHandlers(host: HostInternals) {
     });
     return normalizeConfirmDecision(decision);
   });
-  host.registerHandler('plugins.uninstall', (params) => {
+  host.registerHandler('plugins.uninstall', async (params) => {
     const { id } = params as { id: string };
     if (!host.plugins.some((plugin) => plugin.id === id)) throw new Error(`plugin not found: ${id}`);
     host.plugins = host.plugins.filter((plugin) => plugin.id !== id);
+    /* remove the installed bundle from disk so it does not reappear on the next
+       boot rehydration; built-in plugins have no record and the adapter no-ops. */
+    await host.pluginStore?.remove(id).catch(() => {});
     host.publish('plugins:changed', { plugins: host.plugins });
     return { uninstalled: true, id };
   });
