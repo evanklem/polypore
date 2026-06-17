@@ -105,9 +105,7 @@ fn build_record(id: &str, dir: &Path) -> Option<InstalledPlugin> {
         enabled: record.enabled.unwrap_or(true),
         scope: record.scope.unwrap_or_else(|| "project".to_string()),
         installed_at: record.installed_at.unwrap_or(0),
-        source: record
-            .source
-            .unwrap_or_else(|| dir.display().to_string()),
+        source: record.source.unwrap_or_else(|| dir.display().to_string()),
         entry_url,
         permissions,
         manifest,
