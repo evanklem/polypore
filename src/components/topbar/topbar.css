@@ -227,6 +227,76 @@
 }
 
 
+/* Custom caption buttons, shown only on Windows/Linux where the native title
+   bar is off (decorations: false). They sit flush in the top-right corner —
+   the negative margins cancel the topbar's padding so the hit targets reach the
+   window edges (Fitts's law). macOS never renders these; .topbar--mac instead
+   insets the left edge to clear the native traffic lights overlaid by
+   titleBarStyle: "Overlay". */
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  margin: -4px -8px -4px 2px;
+}
+
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  transition: background 0.1s, color 0.1s;
+}
+
+
+.window-control:hover {
+  background: var(--accent-12);
+  color: var(--ink);
+}
+
+
+.window-control:active {
+  background: var(--accent-18);
+}
+
+
+.window-control:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -3px;
+}
+
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+}
+
+
+/* Close is the one caption button with a destructive, platform-standard red
+   hover so an accidental hover reads clearly before the click. */
+.window-control--close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+
+.window-control--close:active {
+  background: #c50f1f;
+  color: #fff;
+}
+
+
+.topbar--mac {
+  padding-left: 76px;
+}
+
+
 .git-branch-menu {
   position: relative;
   flex: 0 0 auto;

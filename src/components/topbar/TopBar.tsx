@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LaunchTarget } from '../../Launcher';
 import type { PanelType, UserWorkspacePreset, WorkspaceName } from '../../core/types';
 import { GitMenu, type GitNotice } from './GitMenu';
+import { getAppWindow, IS_MAC } from './platform';
 import { ProjectMenu } from './ProjectMenu';
+import { WindowControls } from './WindowControls';
 import { WorkspaceMenu } from './WorkspaceMenu';
 import type { ProjectStatusResult, TauriInvoke } from './types';
 
@@ -46,6 +48,11 @@ export function TopBar({
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
   const [gitNotice, setGitNotice] = useState<GitNotice | null>(null);
   const headerRef = useRef<HTMLElement>(null);
+  /* Present only inside the Tauri desktop shell. On macOS the native traffic
+     lights handle min/max/close, so we draw our own controls only off-mac and
+     instead inset the left edge to clear the overlaid traffic lights. */
+  const appWindow = useMemo(() => getAppWindow(), []);
+  const macInset = appWindow !== null && IS_MAC;
   const [status, setStatus] = useState<ProjectStatusResult>({
     path: '',
     name: 'polypore',
@@ -114,7 +121,11 @@ export function TopBar({
   }, [openMenu]);
 
   return (
-    <header className="topbar" ref={headerRef}>
+    <header
+      className={`topbar${macInset ? ' topbar--mac' : ''}`}
+      ref={headerRef}
+      data-tauri-drag-region
+    >
       <ProjectMenu
         status={status}
         onStatusChange={setStatus}
@@ -151,7 +162,7 @@ export function TopBar({
           render elsewhere when they're real. */}
       <button className="segment settings-button" title="settings" aria-label="settings" onClick={onOpenSettings}>settings</button>
       <button className="segment help-button" title="help" aria-label="help" onClick={onOpenHelp}>help</button>
-      <div className="segment segment--brand">polypore v{__APP_VERSION__}</div>
+      {appWindow && !IS_MAC && <WindowControls appWindow={appWindow} />}
       {gitNotice && (
         <div
           className={`git-toast git-toast--${gitNotice.tone}`}

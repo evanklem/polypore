@@ -289,7 +289,6 @@ test('new-project wizard rejects names that do not start with a letter or number
 test('renders the default glassy operator workspace shell', () => {
   render(<App />);
 
-  expect(screen.getByText('polypore v0.1.0')).toBeInTheDocument();
   expect(screen.getByText('workspace')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /git branch none/i })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /^help$/i })).toBeInTheDocument();
