@@ -6,6 +6,12 @@ Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable
 
 ---
 
+## Demo
+
+https://github.com/user-attachments/assets/ff37f199-131b-47ae-9c87-6465b6ccc6e9
+
+---
+
 ## Install
 
 Download the build for your platform from the [latest release](https://github.com/evanklem/polypore/releases/latest). Polypore updates itself after the first install.
