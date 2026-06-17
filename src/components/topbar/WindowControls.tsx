@@ -44,7 +44,7 @@ export function WindowControls({ appWindow }: { appWindow: AppWindowControls }) 
         type="button"
         className="window-control"
         aria-label="minimize"
-        title="Minimize"
+        title="minimize"
         onClick={minimize}
       >
         <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false">
@@ -55,7 +55,7 @@ export function WindowControls({ appWindow }: { appWindow: AppWindowControls }) 
         type="button"
         className="window-control"
         aria-label={maximized ? 'restore' : 'maximize'}
-        title={maximized ? 'Restore' : 'Maximize'}
+        title={maximized ? 'restore' : 'maximize'}
         onClick={toggleMaximize}
       >
         {maximized ? (
@@ -73,7 +73,7 @@ export function WindowControls({ appWindow }: { appWindow: AppWindowControls }) 
         type="button"
         className="window-control window-control--close"
         aria-label="close"
-        title="Close"
+        title="close"
         onClick={close}
       >
         <svg viewBox="0 0 10 10" aria-hidden="true" focusable="false" stroke="currentColor" strokeWidth="1">
