@@ -8,7 +8,7 @@ Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable
 
 ## Demo
 
-https://github.com/user-attachments/assets/ff37f199-131b-47ae-9c87-6465b6ccc6e9
+https://github.com/user-attachments/assets/a3961bf3-46cd-4168-8e12-9acfcb2bf6b7
 
 ---
 
