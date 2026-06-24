@@ -29,21 +29,21 @@ https://github.com/user-attachments/assets/a3961bf3-46cd-4168-8e12-9acfcb2bf6b7
   <tr>
     <td width="50%">
       <img src="https://github.com/user-attachments/assets/7ad1b39a-1392-447d-8da8-b1d8de57e3d1" alt="Editor panel" />
-      <p align="center"><b>Editor</b> — Monaco with a live file tree and per-project diagnostics.</p>
+      <p align="center"><b>Editor:</b> Monaco with a live file tree and per-project diagnostics.</p>
     </td>
     <td width="50%">
       <img src="https://github.com/user-attachments/assets/9facaa4e-8212-408d-b9fe-21c2741f8f28" alt="Debug and diff panels" />
-      <p align="center"><b>Debug</b> — verify runs and a scrubbable side-by-side diff.</p>
+      <p align="center"><b>Debug:</b> verify runs and checks on the left, the side-by-side diff and history feed docked on the right.</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
       <img src="https://github.com/user-attachments/assets/822b12ac-6c2a-4631-a81a-5471e89a0f1f" alt="Memory panel" />
-      <p align="center"><b>Memory</b> — a project knowledge base with <code>[[wikilinks]]</code>.</p>
+      <p align="center"><b>Memory:</b> a project knowledge base wired together with <code>[[wikilinks]]</code>.</p>
     </td>
     <td width="50%">
       <img src=".github/screenshots/agent.png" alt="Agent panel" />
-      <p align="center"><b>Agent</b> — the formation canvas, skills, MCP, and secrets.</p>
+      <p align="center"><b>Agent:</b> the formation canvas, skills, MCP servers, and secrets in one place.</p>
     </td>
   </tr>
 </table>
@@ -71,11 +71,16 @@ To build from source instead, see [Getting started](#getting-started) below.
 
 ---
 
-## The idea
+## Why Polypore
 
-The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE's release cycle, so Polypore is built to keep up rather than freeze a stack in place. Every surface is a sandboxed panel behind a shared contract, which means any piece of the IDE can be swapped, extended, or dropped without touching the core.
+The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE ships releases, so Polypore is built to keep up instead of freezing a stack in place. This is not a code editor with an agent panel bolted on. The layout, the memory, the debug tooling, and the MCP server are all designed around the agent doing the work and a human steering it.
 
-This is not a code editor with an agent panel bolted on after the fact. The layout, the memory system, the debug tooling, and the MCP server were all designed around the agent doing the work and a human steering it.
+Polypore is designed to be:
+
+- **Agent-first:** every panel is wired into an MCP server, so an agent can drive the editor, debugger, and memory the same way you do.
+- **Swappable:** each surface is a sandboxed panel behind one shared contract, so any piece can be extended, replaced, or dropped without touching the core.
+- **Language and OS agnostic:** per-project config registries instead of a hardcoded toolchain, with builds for Linux, macOS, and Windows.
+- **Yours:** secrets stay in the OS keyring, the model never sees plaintext, and there is no telemetry.
 
 ---
 
