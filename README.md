@@ -25,31 +25,24 @@ https://github.com/user-attachments/assets/a3961bf3-46cd-4168-8e12-9acfcb2bf6b7
 
 ## Screenshots
 
-<!--
-  GitHub attachment URLs go here. To get them: open the PR, drag each PNG from
-  your Downloads folder into the description box, and GitHub returns a
-  https://github.com/user-attachments/assets/... URL. Paste each into the
-  matching src below, then delete this comment.
--->
-
 <table>
   <tr>
     <td width="50%">
-      <img src="PASTE_EDITOR_ATTACHMENT_URL" alt="Editor panel" />
+      <img src="https://github.com/user-attachments/assets/7ad1b39a-1392-447d-8da8-b1d8de57e3d1" alt="Editor panel" />
       <p align="center"><b>Editor</b> — Monaco with a live file tree and per-project diagnostics.</p>
     </td>
     <td width="50%">
-      <img src="PASTE_DEBUG_ATTACHMENT_URL" alt="Debug and diff panels" />
+      <img src="https://github.com/user-attachments/assets/9facaa4e-8212-408d-b9fe-21c2741f8f28" alt="Debug and diff panels" />
       <p align="center"><b>Debug</b> — verify runs and a scrubbable side-by-side diff.</p>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <img src="PASTE_MEMORY_ATTACHMENT_URL" alt="Memory panel" />
+      <img src="https://github.com/user-attachments/assets/822b12ac-6c2a-4631-a81a-5471e89a0f1f" alt="Memory panel" />
       <p align="center"><b>Memory</b> — a project knowledge base with <code>[[wikilinks]]</code>.</p>
     </td>
     <td width="50%">
-      <img src="PASTE_AGENT_ATTACHMENT_URL" alt="Agent panel" />
+      <img src="https://github.com/user-attachments/assets/ca7fd44c-d117-455e-af7c-c461916bd24f" alt="Agent panel" />
       <p align="center"><b>Agent</b> — the formation canvas, skills, MCP, and secrets.</p>
     </td>
   </tr>
