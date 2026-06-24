@@ -1,14 +1,52 @@
+<div align="center">
+
+<img src="public/polyporelogo.png" alt="Polypore" width="128" height="128" />
+
 # Polypore
 
-Agentic desktop IDE. Language agnostic, OS agnostic. Every surface is a dockable panel: split, reorder, close what you don't need. The built-in panels cover most workflows. If they don't, the SDK is there.
+**An agentic desktop IDE that treats the agent as the primary actor, not a sidebar.**
 
-> Tauri 2 · React 18 · Dockview · Monaco · MIT · no telemetry
+Language agnostic, OS agnostic. Every surface is a dockable panel you can split, reorder, or close. The built-in panels cover most workflows; when they don't, the SDK is there.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%C2%B7%20macOS%20%C2%B7%20Windows-555.svg)](#install)
+[![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24C8DB.svg)](https://tauri.app)
+[![No telemetry](https://img.shields.io/badge/telemetry-none-444.svg)](#)
+
+</div>
 
 ---
 
 ## Demo
 
 https://github.com/user-attachments/assets/a3961bf3-46cd-4168-8e12-9acfcb2bf6b7
+
+---
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="https://github.com/user-attachments/assets/7ad1b39a-1392-447d-8da8-b1d8de57e3d1" alt="Editor panel" />
+      <p align="center"><b>Editor:</b> Monaco with a live file tree and per-project diagnostics.</p>
+    </td>
+    <td width="50%">
+      <img src="https://github.com/user-attachments/assets/9facaa4e-8212-408d-b9fe-21c2741f8f28" alt="Debug and diff panels" />
+      <p align="center"><b>Debug:</b> verify runs and checks on the left, the side-by-side diff and history feed docked on the right.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="https://github.com/user-attachments/assets/822b12ac-6c2a-4631-a81a-5471e89a0f1f" alt="Memory panel" />
+      <p align="center"><b>Memory:</b> a project knowledge base wired together with <code>[[wikilinks]]</code>.</p>
+    </td>
+    <td width="50%">
+      <img src=".github/screenshots/agent.png" alt="Agent panel" />
+      <p align="center"><b>Agent:</b> the formation canvas, skills, MCP servers, and secrets in one place.</p>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -33,17 +71,22 @@ To build from source instead, see [Getting started](#getting-started) below.
 
 ---
 
-## The idea
+## Why Polypore
 
-The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE's release cycle. Polypore is structured to keep up. Every surface is a sandboxed panel behind a shared contract. Any piece of the IDE can be swapped, extended, or dropped without touching the core.
+The agentic tooling space moves fast. The right models, CLIs, and orchestration patterns shift faster than a typical IDE ships releases, so Polypore is built to keep up instead of freezing a stack in place. This is not a code editor with an agent panel bolted on. The layout, the memory, the debug tooling, and the MCP server are all designed around the agent doing the work and a human steering it.
 
-This is not a code editor with an agent panel added later. The layout, the memory system, the debug tooling, and the MCP server are all designed around the agent as the primary actor.
+Polypore is designed to be:
+
+- **Agent-first:** every panel is wired into an MCP server, so an agent can drive the editor, debugger, and memory the same way you do.
+- **Swappable:** each surface is a sandboxed panel behind one shared contract, so any piece can be extended, replaced, or dropped without touching the core.
+- **Language and OS agnostic:** per-project config registries instead of a hardcoded toolchain, with builds for Linux, macOS, and Windows.
+- **Yours:** secrets stay in the OS keyring, the model never sees plaintext, and there is no telemetry.
 
 ---
 
 ## Panels
 
-Eight panels are available from the `+` tab button:
+The built-in panels, all available from the `+` tab button:
 
 | Panel | What it does |
 |---|---|
@@ -67,7 +110,7 @@ Third-party panels are sandboxed iframes using the same `HostRpcServer` contract
 
 ## polypore-ide MCP server
 
-A Node MCP sidecar ships with Polypore. Claude Code picks it up from `.mcp.json` automatically. Gives agents direct IDE control through 22+ tools:
+A Node MCP sidecar ships with Polypore. Claude Code picks it up from `.mcp.json` automatically. It gives agents direct IDE control through 22+ tools:
 
 | Namespace | What agents can do |
 |---|---|
@@ -189,7 +232,7 @@ Contracts live in `schemas/` and codegen into `packages/sdk/src/types.gen.ts` an
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## License
 
