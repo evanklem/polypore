@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/a3961bf3-46cd-4168-8e12-9acfcb2bf6b7
       <p align="center"><b>Memory</b> — a project knowledge base with <code>[[wikilinks]]</code>.</p>
     </td>
     <td width="50%">
-      <img src="https://github.com/user-attachments/assets/ca7fd44c-d117-455e-af7c-c461916bd24f" alt="Agent panel" />
+      <img src=".github/screenshots/agent.png" alt="Agent panel" />
       <p align="center"><b>Agent</b> — the formation canvas, skills, MCP, and secrets.</p>
     </td>
   </tr>
