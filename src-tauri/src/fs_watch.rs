@@ -476,6 +476,45 @@ pub fn fs_list_tree() -> Result<Vec<FileTreeNode>, String> {
     list_dir(&root, &root, 0, &mut count, &config)
 }
 
+/// Lazy one-level listing for the file explorer. `path` is workspace-relative
+/// (empty = root). Folders come back collapsed; the explorer requests their
+/// children on expand via another call.
+#[tauri::command]
+pub fn fs_list_dir(path: String) -> Result<Vec<FileTreeNode>, String> {
+    let root = resolve_workspace_root()?;
+    let canonical_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+    let target = resolve_workspace_path(&path)?;
+    let config = load_file_tree_config(&root);
+    list_dir_shallow(&canonical_root, &target, &config)
+}
+
+/// Complete, gitignore-aware list of workspace files for the quick-open index and
+/// Monaco cross-file resolution. Decoupled from the explorer tree so it stays
+/// complete even as the tree loads lazily. Backed by `rg --files`; falls back to an
+/// empty list when ripgrep is unavailable (the host then scans open buffers).
+fn list_workspace_files(root: &Path) -> Result<Vec<String>, String> {
+    let output = match std::process::Command::new("rg")
+        .arg("--files")
+        .current_dir(root)
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return Ok(Vec::new()),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| line.replace('\\', "/"))
+        .collect())
+}
+
+#[tauri::command]
+pub fn fs_list_files() -> Result<Vec<String>, String> {
+    let root = resolve_workspace_root()?;
+    list_workspace_files(&root)
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchMatch {
@@ -799,6 +838,62 @@ pub fn knowledge_write(
         .map_err(|err| format!("failed to write knowledge doc {}: {err}", target.display()))
 }
 
+/// One level of children for `dir`, relative to the workspace `root`. Folders are
+/// returned with empty `children` (the frontend resolves them lazily on expand), so
+/// there is no global file cap and no walk depth — an oversized subtree like `.venv`
+/// is a single collapsed node that costs one `read_dir`, never starving its siblings.
+fn list_dir_shallow(
+    root: &Path,
+    dir: &Path,
+    config: &FileTreeConfig,
+) -> Result<Vec<FileTreeNode>, String> {
+    let mut entries = std::fs::read_dir(dir)
+        .map_err(|err| format!("failed to list {}: {err}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .collect::<Vec<_>>();
+
+    entries.sort_by_key(|entry| {
+        let is_file = entry.file_type().map(|kind| kind.is_file()).unwrap_or(true);
+        (is_file, entry.file_name().to_string_lossy().to_lowercase())
+    });
+
+    let mut nodes = Vec::new();
+    for entry in entries {
+        let file_type = match entry.file_type() {
+            Ok(file_type) => file_type,
+            Err(_) => continue,
+        };
+        if file_type.is_symlink() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let path = entry.path();
+        if file_type.is_dir() {
+            if ignored_dir_path(root, &path, &name, config) {
+                continue;
+            }
+            nodes.push(FileTreeNode::Folder {
+                name,
+                children: Vec::new(),
+            });
+            continue;
+        }
+        if !file_type.is_file() || !looks_textual_with_config(&path, config) {
+            continue;
+        }
+        let relative = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        nodes.push(FileTreeNode::File {
+            name,
+            path: relative,
+        });
+    }
+    Ok(nodes)
+}
+
 fn list_dir(
     root: &Path,
     dir: &Path,
@@ -873,7 +968,20 @@ fn always_ignored_dir_name(name: &str) -> bool {
 fn built_in_ignored_dir_name(name: &str) -> bool {
     matches!(
         name,
-        ".idea" | ".DS_Store" | "node_modules" | "target" | "dist" | "build" | ".vite" | ".tauri"
+        ".idea"
+            | ".DS_Store"
+            | "node_modules"
+            | "target"
+            | "dist"
+            | "build"
+            | ".vite"
+            | ".tauri"
+            | ".venv"
+            | "venv"
+            | "__pycache__"
+            | ".mypy_cache"
+            | ".pytest_cache"
+            | ".ruff_cache"
     )
 }
 
@@ -1575,6 +1683,102 @@ mod tests {
         assert!(!ignored_watch_path(
             root,
             &root.join("src-tauri/src/fs_watch.rs")
+        ));
+    }
+
+    #[test]
+    fn list_workspace_files_enumerates_every_file_uncapped() {
+        if std::process::Command::new("rg")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            return; // ripgrep is the index backend; nothing to assert without it
+        }
+        let root = temp_root("index-files");
+        std::fs::create_dir_all(root.join("src/deep/nested")).expect("nested dirs");
+        std::fs::write(root.join("README.md"), "x").expect("readme");
+        std::fs::write(root.join("src/app.ts"), "x").expect("app");
+        std::fs::write(root.join("src/deep/nested/leaf.rs"), "x").expect("leaf");
+
+        let files = list_workspace_files(&root).expect("index");
+
+        assert!(files.contains(&"README.md".to_string()));
+        assert!(files.contains(&"src/app.ts".to_string()));
+        // the deeply nested file proves there is no depth/count cap on the index
+        assert!(
+            files.contains(&"src/deep/nested/leaf.rs".to_string()),
+            "index dropped a deeply nested file: {files:?}",
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn list_dir_shallow_returns_one_level_folders_first_without_recursing() {
+        let root = temp_root("shallow-list");
+        // a virtualenv with contents that must NOT appear at all
+        std::fs::create_dir_all(root.join(".venv/lib")).expect("venv");
+        std::fs::write(root.join(".venv/pyvenv.cfg"), "home = /x").expect("venv file");
+        // real source folders, each with a child so we can prove non-recursion
+        std::fs::create_dir_all(root.join("alembic")).expect("alembic");
+        std::fs::write(root.join("alembic/env.py"), "x").expect("alembic file");
+        std::fs::create_dir_all(root.join("frontend")).expect("frontend");
+        std::fs::write(root.join("frontend/app.tsx"), "x").expect("frontend file");
+        // top-level files
+        std::fs::write(root.join("README.md"), "x").expect("readme");
+        std::fs::write(root.join("zzz.txt"), "x").expect("zzz");
+
+        let config = FileTreeConfig::default();
+        let nodes = list_dir_shallow(&root, &root, &config).expect("shallow list");
+
+        // folders first (alpha), then files (alpha); .venv excluded entirely
+        let summary: Vec<String> = nodes
+            .iter()
+            .map(|node| match node {
+                FileTreeNode::Folder { name, children } => {
+                    format!("dir:{name}:{}", children.len())
+                }
+                FileTreeNode::File { name, .. } => format!("file:{name}"),
+            })
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                "dir:alembic:0".to_string(),
+                "dir:frontend:0".to_string(),
+                "file:README.md".to_string(),
+                "file:zzz.txt".to_string(),
+            ],
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ignored_dir_path_excludes_python_virtualenv_and_caches() {
+        let root = Path::new("/workspace");
+        let config = FileTreeConfig::default();
+
+        for dir in [
+            ".venv",
+            "venv",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+        ] {
+            assert!(
+                ignored_dir_path(root, &root.join(dir), dir, &config),
+                "{dir} should be ignored by default",
+            );
+        }
+        // a real source dir with a similar name must stay visible
+        assert!(!ignored_dir_path(
+            root,
+            &root.join("environments"),
+            "environments",
+            &config,
         ));
     }
 }

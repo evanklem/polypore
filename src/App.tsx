@@ -646,6 +646,16 @@ if (hasTauriInvoke()) {
       if (!tree) throw new Error('filesystem bridge unavailable');
       return tree;
     },
+    listDir: async (path) => {
+      const tree = tauriInvoke<FileTreeNode[]>('fs_list_dir', { path });
+      if (!tree) throw new Error('filesystem bridge unavailable');
+      return tree;
+    },
+    listFiles: async () => {
+      const files = tauriInvoke<string[]>('fs_list_files');
+      if (!files) throw new Error('filesystem bridge unavailable');
+      return files;
+    },
     readText: async (path) => {
       const text = tauriInvoke<string>('fs_read_text', { path });
       if (!text) throw new Error('filesystem bridge unavailable');

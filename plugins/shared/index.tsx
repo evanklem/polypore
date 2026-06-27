@@ -279,7 +279,7 @@ export function PanelHeader({
 
 export type FileNode =
   | { kind: 'file'; name: string; path: string; subtitle?: string }
-  | { kind: 'folder'; name: string; children: FileNode[] };
+  | { kind: 'folder'; name: string; children: FileNode[]; loaded?: boolean };
 
 export { FileTree, type FileMeta, type FileTreeProps, type FileTreeContextInfo } from './file-tree';
 export {
