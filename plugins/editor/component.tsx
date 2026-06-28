@@ -314,7 +314,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
   }, [host]);
 
   const refreshIndex = useCallback(() => {
-    host.editor.listFiles()
+    return host.editor.listFiles()
       .then((result) => setIndexFiles(result.files ?? []))
       .catch(() => {});
   }, [host]);
@@ -341,6 +341,23 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       /* leave the existing tree in place if a refresh fails */
     }
   }, [host]);
+
+  /* manual refresh: re-read the tree + flat index. VS Code's explorer shows an
+     indeterminate progress bar here, but its 800ms delay means a fast local FS
+     read flashes nothing — so we spin the action icon for a guaranteed minimum
+     so the user always sees the refresh register. */
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const started = Date.now();
+    try {
+      await Promise.all([reloadTree(), refreshIndex()]);
+    } finally {
+      const remaining = 500 - (Date.now() - started);
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      setRefreshing(false);
+    }
+  }, [reloadTree, refreshIndex]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1173,6 +1190,24 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
             <strong className="nav-section__title">files</strong>
             <small className="nav-section__count">{allFiles.length}</small>
             <div className="nav-section__actions">
+              <button
+                className="nav-section__action"
+                title="refresh"
+                aria-label="refresh files"
+                disabled={refreshing}
+                onClick={() => { void handleRefresh(); }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className={`nav-section__refresh-icon${refreshing ? ' nav-section__refresh-icon--spinning' : ''}`}
+                >
+                  <path d="M8 3V1L5.5 3.5 8 6V4a4 4 0 1 1-4 4H2.5A5.5 5.5 0 1 0 8 3z" />
+                </svg>
+              </button>
               <button
                 ref={plusBtnRef}
                 className={`nav-section__action${plusPopupOpen ? ' nav-section__action--open' : ''}`}

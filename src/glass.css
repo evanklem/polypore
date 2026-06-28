@@ -200,7 +200,8 @@ body:has(.is-scrubbing-tabs) * {
   .app-shell::before,
   .app-shell::after,
   .chat-thinking span,
-  .polypore-loading__dots span {
+  .polypore-loading__dots span,
+  .nav-section__refresh-icon--spinning {
     animation: none !important;
   }
   * {
