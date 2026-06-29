@@ -21,7 +21,7 @@ import {
   normalizeTypeScriptProjectConfig,
 } from './ambient-types';
 import type { DebugState } from '../../packages/sdk/src/host';
-import { loadInterfaceSettings } from '../../src/settings/settingsStorage';
+import { applyGlassTheme, loadMonaco, monacoLanguageForPath } from '../shared/monaco-highlight';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
 import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
@@ -32,49 +32,6 @@ type MonacoModule = typeof MonacoApi;
 type MonacoEditorModel = ReturnType<MonacoModule['editor']['createModel']>;
 type MonacoEditorInstance = ReturnType<MonacoModule['editor']['create']>;
 type ExtraLibDisposable = { dispose: () => void };
-
-/* Build Monaco theme color map from the current accent hex. All accent-derived
-   slots use 8-digit hex (RRGGBBAA) so they update together when the accent
-   changes; fixed warm-dark surface colors stay hardcoded. */
-function buildMonacoThemeColors(accentHex: string): Record<string, string> {
-  let r = 240, g = 179, b = 90; // honey fallback
-  const clean = accentHex.replace('#', '');
-  if (/^[0-9a-fA-F]{6}$/.test(clean)) {
-    r = parseInt(clean.slice(0, 2), 16);
-    g = parseInt(clean.slice(2, 4), 16);
-    b = parseInt(clean.slice(4, 6), 16);
-  }
-  const hex2 = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
-  const a = (alpha: number) => `#${hex2(r)}${hex2(g)}${hex2(b)}${hex2(alpha * 255)}`;
-  const full = `#${hex2(r)}${hex2(g)}${hex2(b)}`;
-  return {
-    'editor.background': '#0d0a0700',
-    'editor.foreground': '#ffffff',
-    'editorLineNumber.foreground': '#5c4a32',
-    'editorLineNumber.activeForeground': full,
-    'editor.selectionBackground': a(0.40),
-    'editor.lineHighlightBackground': '#1a120c80',
-    'editorCursor.foreground': full,
-    'editorIndentGuide.background': '#2a1c1240',
-    'editorIndentGuide.activeBackground': a(0.19),
-    'editorBracketMatch.background': a(0.19),
-    'editorBracketMatch.border': full,
-    'editorStickyScroll.background': '#120c08f5',
-    'editorStickyScrollHover.background': '#1d1410f8',
-    'editor.findMatchBackground': a(0.31),
-    'editor.findMatchHighlightBackground': a(0.13),
-    'editor.findMatchBorder': a(0.60),
-    'editor.findRangeHighlightBackground': a(0.06),
-    'editorWidget.background': '#1a110a',
-    'editorWidget.border': '#3d2a1a',
-    'editorWidget.foreground': '#ffffff',
-    'input.background': '#2a1c10',
-    'input.border': '#3d2a1a',
-    'input.foreground': '#ffffff',
-    'inputOption.activeBorder': full,
-    'inputOption.activeBackground': a(0.13),
-  };
-}
 
 const TYPE_SCRIPT_FILE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 const WORKSPACE_IMPORT_LIMIT = 80;
@@ -602,22 +559,12 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
        loads the editor with zero language contributions, which is why
        opening a .tsx file rendered as flat plaintext. */
     perfPoint('editor:monaco-import-start');
-    import('monaco-editor/esm/vs/editor/editor.main').then((monaco) => {
+    loadMonaco().then((monaco) => {
       perfPoint('editor:monaco-import-resolved');
       if (disposed || !monacoHostRef.current) return;
-      /* glass editor theme — warm-dark surface with transparent background so
-         the panel's frosted layer shows through. Accent colors are derived from
-         the user's current settings so they update when the theme changes. */
-      const applyTheme = () => {
-        const accent = loadInterfaceSettings().accent;
-        monaco.editor.defineTheme('polypore-warm', {
-          base: 'vs-dark',
-          inherit: true,
-          rules: [],
-          colors: buildMonacoThemeColors(accent),
-        });
-        monaco.editor.setTheme('polypore-warm');
-      };
+      /* glass editor theme — derived from the user's accent, shared with the
+         diff panel via applyGlassTheme so both stay in sync. */
+      const applyTheme = () => applyGlassTheme(monaco);
       applyTheme();
       /* watch :root inline style for changes — applyInterfaceSettings writes
          CSS vars there, so this fires whenever the user changes their accent. */
@@ -2089,43 +2036,8 @@ function declarationReferenceTypes(text: string) {
     .flatMap((match) => match[1] ? [match[1]] : []);
 }
 
-/* look up monaco's registered language id for a file path by querying the
-   editor's own language registry. `monaco.languages.getLanguages()` returns
-   every contribution registered by `editor.main` (the basic-languages
-   bundle), each with the file extensions, recognized filenames (Dockerfile,
-   Makefile, …), and aliases it claims. matching against that registry means
-   we automatically pick up any language monaco ships with — no whitelist to
-   keep in sync. falls back to plaintext if nothing claims the file. */
-function monacoLanguageForPath(monaco: MonacoModule, path: string): string {
-  if (!path) return 'plaintext';
-  const filename = (path.split('/').pop() ?? '').toLowerCase();
-  const dot = filename.lastIndexOf('.');
-  const ext = dot >= 0 ? filename.slice(dot) : '';
-  const langs = (monaco as unknown as {
-    languages: {
-      getLanguages: () => Array<{
-        id: string;
-        extensions?: string[];
-        filenames?: string[];
-        aliases?: string[];
-      }>;
-    };
-  }).languages.getLanguages();
-  for (const lang of langs) {
-    if (ext && lang.extensions?.some((e) => e.toLowerCase() === ext)) return lang.id;
-    if (lang.filenames?.some((f) => f.toLowerCase() === filename)) return lang.id;
-  }
-  /* aliases/ids without dotted extensions (e.g. "Dockerfile.dev") — last
-     ditch: check if the bare filename or trailing token matches a language
-     id or alias. */
-  const tail = dot >= 0 ? filename.slice(dot + 1) : filename;
-  for (const lang of langs) {
-    if (lang.id.toLowerCase() === tail) return lang.id;
-    if (lang.aliases?.some((a) => a.toLowerCase() === tail)) return lang.id;
-  }
-  return 'plaintext';
-}
-
+/* project language-server config wins; otherwise fall back to monaco's own
+   language registry (monacoLanguageForPath, in shared/monaco-highlight). */
 function editorLanguageForPath(monaco: MonacoModule, path: string, projectConfig: ProjectLanguageConfig): string {
   return projectLanguageForPath(projectConfig, path) ?? monacoLanguageForPath(monaco, path);
 }

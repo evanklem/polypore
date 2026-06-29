@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { GitDiffResult } from '../../packages/sdk/src/host';
 import type { BuiltinPluginProps } from '../shared';
 import { PanelHeader, ResizeHandle, scheduleAfterPaint, useResizableSplit } from '../shared';
+import { applyGlassTheme, colorizeLines, loadMonaco, monacoLanguageForPath } from '../shared/monaco-highlight';
+import { collectSideLines, type SideRow } from './collect-side-lines';
 
 type CompareMode = 'working' | 'branch';
 
@@ -13,13 +15,6 @@ const COMPARE_OPTIONS: Array<{
   { mode: 'working', label: 'head vs working tree', detail: 'local uncommitted changes' },
   { mode: 'branch', label: 'upstream vs current branch', detail: 'commits on this branch' },
 ];
-
-type SideRow =
-  | { kind: 'header'; text: string }
-  | { kind: 'context'; baseLn: number; targetLn: number; text: string }
-  | { kind: 'delete'; baseLn: number; text: string }
-  | { kind: 'add'; targetLn: number; text: string }
-  | { kind: 'change'; baseLn: number; baseText: string; targetLn: number; targetText: string };
 
 function parseUnifiedDiff(unified: string): SideRow[] {
   if (!unified.trim()) return [];
@@ -93,6 +88,14 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
   const [diffParsing, setDiffParsing] = useState(false);
   const [sideRows, setSideRows] = useState<SideRow[]>([]);
   const [visibleRowCount, setVisibleRowCount] = useState(0);
+  /* row index -> Monaco-colorized HTML for that line, one map per column.
+     missing entries (plaintext, unloaded monaco) fall back to plain text. */
+  const [baseHtml, setBaseHtml] = useState<Record<number, string>>({});
+  const [targetHtml, setTargetHtml] = useState<Record<number, string>>({});
+  /* apply the Monaco theme once — it's global + accent-independent for token
+     colors, so re-applying on every file switch would needlessly recolor any
+     live editor. */
+  const themeAppliedRef = useRef(false);
 
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [compareMode, setCompareMode] = useState<CompareMode>('working');
@@ -229,6 +232,54 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
     });
     return () => window.cancelAnimationFrame(frame);
   }, [sideRows.length, visibleRowCount]);
+
+  /* syntax-highlight each column with the same Monaco tokenizer/theme the
+     editor uses. Colorize the contiguous per-side text once, then thread each
+     resulting line back to its row index. Diff-status tints stay dominant —
+     these are foreground token colors over the row background. Falls back to
+     plain text for plaintext/unknown languages or if Monaco fails to load. */
+  useEffect(() => {
+    let cancelled = false;
+    setBaseHtml({});
+    setTargetHtml({});
+    if (sideRows.length === 0 || !activeFile) return () => { cancelled = true; };
+    loadMonaco()
+      .then((monaco) => {
+        if (cancelled) return;
+        if (!themeAppliedRef.current) {
+          applyGlassTheme(monaco);
+          themeAppliedRef.current = true;
+        }
+        const language = monacoLanguageForPath(monaco, activeFile);
+        if (language === 'plaintext') return;
+        const baseLines = collectSideLines(sideRows, 'base');
+        const targetLines = collectSideLines(sideRows, 'target');
+        return Promise.all([
+          colorizeLines(monaco, baseLines.map((line) => line.text).join('\n'), language),
+          colorizeLines(monaco, targetLines.map((line) => line.text).join('\n'), language),
+        ]).then(([baseColored, targetColored]) => {
+          if (cancelled) return;
+          const baseMap: Record<number, string> = {};
+          baseLines.forEach((line, i) => {
+            if (baseColored[i] != null) baseMap[line.index] = baseColored[i];
+          });
+          const targetMap: Record<number, string> = {};
+          targetLines.forEach((line, i) => {
+            if (targetColored[i] != null) targetMap[line.index] = targetColored[i];
+          });
+          setBaseHtml(baseMap);
+          setTargetHtml(targetMap);
+        });
+      })
+      .catch(() => { /* leave the plain-text fallback in place */ });
+    return () => { cancelled = true; };
+  }, [sideRows, activeFile]);
+
+  const renderCode = (html: Record<number, string>, index: number, fallback: string) => {
+    const colored = html[index];
+    if (colored != null) return <code dangerouslySetInnerHTML={{ __html: colored || ' ' }} />;
+    return <code>{fallback || ' '}</code>;
+  };
 
   return (
     <div className="diff-history-shell">
@@ -371,7 +422,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`L-${index}`} className="diff-line diff-line--same">
                       <span>{row.baseLn}</span>
-                      <code>{row.text || ' '}</code>
+                      {renderCode(baseHtml, index, row.text)}
                     </div>
                   );
                 }
@@ -379,7 +430,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`L-${index}`} className="diff-line diff-line--remove">
                       <span>{row.baseLn}</span>
-                      <code>{row.text || ' '}</code>
+                      {renderCode(baseHtml, index, row.text)}
                     </div>
                   );
                 }
@@ -387,7 +438,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`L-${index}`} className="diff-line diff-line--remove">
                       <span>{row.baseLn}</span>
-                      <code>{row.baseText || ' '}</code>
+                      {renderCode(baseHtml, index, row.baseText)}
                     </div>
                   );
                 }
@@ -421,7 +472,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`R-${index}`} className="diff-line diff-line--same">
                       <span>{row.targetLn}</span>
-                      <code>{row.text || ' '}</code>
+                      {renderCode(targetHtml, index, row.text)}
                     </div>
                   );
                 }
@@ -429,7 +480,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`R-${index}`} className="diff-line diff-line--add">
                       <span>{row.targetLn}</span>
-                      <code>{row.text || ' '}</code>
+                      {renderCode(targetHtml, index, row.text)}
                     </div>
                   );
                 }
@@ -437,7 +488,7 @@ export function DiffHistoryPanel({ header, host }: BuiltinPluginProps) {
                   return (
                     <div key={`R-${index}`} className="diff-line diff-line--add">
                       <span>{row.targetLn}</span>
-                      <code>{row.targetText || ' '}</code>
+                      {renderCode(targetHtml, index, row.targetText)}
                     </div>
                   );
                 }
