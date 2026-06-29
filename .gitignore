@@ -52,3 +52,6 @@ yarn-error.log*
 
 # polypore runtime state
 /.polypore/mcp-state.json
+# installed-plugin registry; built-ins ship in plugins/, and smoke runs
+# install into here, so it should never be tracked
+/.polypore/plugins/
