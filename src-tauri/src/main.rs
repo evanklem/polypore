@@ -69,6 +69,8 @@ fn main() {
             external::open_external_url,
             fs_watch::fs_watch_status,
             fs_watch::fs_list_tree,
+            fs_watch::fs_list_dir,
+            fs_watch::fs_list_files,
             fs_watch::fs_search,
             fs_watch::fs_read_text,
             fs_watch::fs_write_text,

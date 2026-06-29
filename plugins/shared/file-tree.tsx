@@ -21,6 +21,10 @@ export type FileTreeProps = {
   metaFor?: (path: string) => FileMeta | undefined;
   basePath?: string;
   onContextMenu?: (e: React.MouseEvent, info: FileTreeContextInfo) => void;
+  /* opt-in lazy loading: when set, a folder's children are requested via
+     onExpand(folderPath) on first expand instead of being walked up front.
+     Omit it for eager trees whose children are already fully resolved. */
+  onExpand?: (folderPath: string) => void;
 };
 
 export function FileTree({
@@ -34,6 +38,7 @@ export function FileTree({
   metaFor,
   basePath = '',
   onContextMenu,
+  onExpand,
 }: FileTreeProps) {
   return (
     <div className="file-tree" role={depth === 0 ? 'tree' : 'group'}>
@@ -51,6 +56,7 @@ export function FileTree({
             metaFor={metaFor}
             basePath={basePath}
             onContextMenu={onContextMenu}
+            onExpand={onExpand}
           />
         ) : (
           <FileTreeFile
@@ -82,6 +88,7 @@ function FileTreeFolder({
   metaFor,
   basePath,
   onContextMenu,
+  onExpand,
 }: {
   node: Extract<FileNode, { kind: 'folder' }>;
   depth: number;
@@ -93,9 +100,20 @@ function FileTreeFolder({
   metaFor?: (path: string) => FileMeta | undefined;
   basePath: string;
   onContextMenu?: (e: React.MouseEvent, info: FileTreeContextInfo) => void;
+  onExpand?: (folderPath: string) => void;
 }) {
   const [open, setOpen] = useState(defaultExpanded);
   const folderPath = basePath ? `${basePath}/${node.name}` : node.name;
+  // lazy mode reveals child count only once the level has been resolved
+  const showCount = !onExpand || node.loaded;
+
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      if (next && onExpand && !node.loaded) onExpand(folderPath);
+      return next;
+    });
+  };
 
   return (
     <div className="file-tree__folder" role="treeitem" aria-expanded={open}>
@@ -104,7 +122,7 @@ function FileTreeFolder({
         className="file-tree__row file-tree__row--folder"
         style={{ paddingLeft: 6 + depth * 12 }}
         title={folderPath}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         onContextMenu={
           onContextMenu
             ? (e) => {
@@ -118,7 +136,7 @@ function FileTreeFolder({
         <span className="file-tree__chevron" aria-hidden="true">{open ? 'v' : '>'}</span>
         <span className="file-tree__icon file-tree__icon--folder" aria-hidden="true" />
         <span className="file-tree__label">{node.name}</span>
-        <small className="file-tree__count">{node.children.length}</small>
+        {showCount && <small className="file-tree__count">{node.children.length}</small>}
       </button>
       {open && (
         <FileTree
@@ -132,6 +150,7 @@ function FileTreeFolder({
           metaFor={metaFor}
           basePath={folderPath}
           onContextMenu={onContextMenu}
+          onExpand={onExpand}
         />
       )}
     </div>

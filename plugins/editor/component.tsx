@@ -195,6 +195,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; info: FileTreeContextInfo } | null>(null);
   const [query, setQuery] = useState('');
   const [tree, setTree] = useState<FileNode[]>([]);
+  const [indexFiles, setIndexFiles] = useState<string[]>([]);
   const [fileText, setFileText] = useState('');
   const [monacoReady, setMonacoReady] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([]);
@@ -258,23 +259,15 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
        the yield, this fires synchronously with all the other editor
        useEffects after commit and the panel can't paint until the
        chain drains. with it, the editor frame paints instantly and the
-       file tree fills in on the next task. */
+       file tree fills in on the next task. only the root level is fetched;
+       a folder's children are resolved lazily on expand (loadChildren). */
     let cancelled = false;
     const cancelSchedule = scheduleAfterPaint(() => {
       if (cancelled) return;
       perfPoint('editor:tree-effect-fires');
-      host.editor.tree().then((result) => {
+      host.editor.listDir('').then((result) => {
         if (cancelled || !result.tree) return;
-        const nextTree = result.tree as FileNode[];
-        setTree(nextTree);
-        const nextFiles = flattenFiles(nextTree);
-        setActiveFile((current) => {
-          if (current && nextFiles.includes(current)) return current;
-          if (nextFiles.length === 0) return '';
-          const preferred = nextFiles.find((path) => path.toLowerCase().endsWith('readme.md')) ?? nextFiles[0];
-          setOpenFiles([preferred]);
-          return preferred;
-        });
+        setTree(result.tree as FileNode[]);
       }).catch(() => {
         setTree([]);
       });
@@ -284,6 +277,87 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       cancelSchedule();
     };
   }, [host]);
+
+  /* workspace file index — complete and gitignore-aware, kept separate from the
+     lazily-loaded explorer tree so quick-open and Monaco cross-file resolution
+     always see every file. also drives the initial active-file pick. */
+  useEffect(() => {
+    let cancelled = false;
+    host.editor.listFiles().then((result) => {
+      if (cancelled || !result.files) return;
+      setIndexFiles(result.files);
+      setActiveFile((current) => {
+        if (current && result.files.includes(current)) return current;
+        if (result.files.length === 0) return '';
+        const preferred = pickDefaultFile(result.files);
+        setOpenFiles([preferred]);
+        return preferred;
+      });
+    }).catch(() => {
+      if (!cancelled) setIndexFiles([]);
+    });
+    return () => { cancelled = true; };
+  }, [host]);
+
+  /* mirror tree into a ref so async refreshes can read which folders were
+     expanded without taking `tree` as a dependency (would re-bind callbacks
+     on every keystroke-driven re-render). */
+  const treeRef = useRef<FileNode[]>([]);
+  useEffect(() => { treeRef.current = tree; }, [tree]);
+
+  /* resolve one folder's children on first expand and merge them in place. */
+  const loadChildren = useCallback((folderPath: string) => {
+    host.editor.listDir(folderPath).then((result) => {
+      if (!result.tree) return;
+      setTree((current) => mergeChildren(current, folderPath, result.tree as FileNode[]));
+    }).catch(() => {});
+  }, [host]);
+
+  const refreshIndex = useCallback(() => {
+    return host.editor.listFiles()
+      .then((result) => setIndexFiles(result.files ?? []))
+      .catch(() => {});
+  }, [host]);
+
+  /* re-fetch exactly the levels that were previously loaded so a create/delete/
+     rename refreshes the tree without collapsing the user's expanded folders. */
+  const reloadTree = useCallback(async () => {
+    const rebuild = async (folderPath: string, prev: FileNode[]): Promise<FileNode[]> => {
+      const result = await host.editor.listDir(folderPath);
+      const fresh = (result.tree ?? []) as FileNode[];
+      return Promise.all(fresh.map(async (node) => {
+        if (node.kind !== 'folder') return node;
+        const prevFolder = prev.find(
+          (p): p is Extract<FileNode, { kind: 'folder' }> => p.kind === 'folder' && p.name === node.name,
+        );
+        if (!prevFolder?.loaded) return node;
+        const childPath = folderPath ? `${folderPath}/${node.name}` : node.name;
+        return { ...node, children: await rebuild(childPath, prevFolder.children), loaded: true };
+      }));
+    };
+    try {
+      setTree(await rebuild('', treeRef.current));
+    } catch {
+      /* leave the existing tree in place if a refresh fails */
+    }
+  }, [host]);
+
+  /* manual refresh: re-read the tree + flat index. VS Code's explorer shows an
+     indeterminate progress bar here, but its 800ms delay means a fast local FS
+     read flashes nothing — so we spin the action icon for a guaranteed minimum
+     so the user always sees the refresh register. */
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    const started = Date.now();
+    try {
+      await Promise.all([reloadTree(), refreshIndex()]);
+    } finally {
+      const remaining = 500 - (Date.now() - started);
+      if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+      setRefreshing(false);
+    }
+  }, [reloadTree, refreshIndex]);
 
   useEffect(() => {
     let cancelled = false;
@@ -336,7 +410,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       window.clearTimeout(timeout);
     };
   }, [activeFile, fileText, host, monacoReady]);
-  const allFiles = useMemo(() => flattenFiles(tree), [tree]);
+  const allFiles = indexFiles;
   const isDirty = activeFile !== '' && fileText !== savedText;
   const newEntryDir = newFilePath.includes('/') ? newFilePath.slice(0, newFilePath.lastIndexOf('/') + 1) : '';
   const diagnosticsByFile = useMemo(() => {
@@ -937,8 +1011,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       setNewFileOpen(false);
       setNewFilePath('');
       openFile(path, { preserveStatus: true });
-      const result = await host.editor.tree();
-      setTree(result.tree as FileNode[]);
+      await reloadTree();
+      refreshIndex();
       setSavedText('');
       setFileText('');
       setSaveStatus('created');
@@ -970,8 +1044,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       await host.fs.mkdir(path);
       setNewFileOpen(false);
       setNewFilePath('');
-      const result = await host.editor.tree();
-      setTree(result.tree as FileNode[]);
+      await reloadTree();
+      refreshIndex();
       setSaveStatus('folder created');
     } catch (err) {
       setFileActionError(err instanceof Error ? err.message : 'could not create folder');
@@ -990,8 +1064,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
         await host.fs.mkdir(path);
         setPlusPopupOpen(false);
         setPlusName('');
-        const result = await host.editor.tree();
-        setTree(result.tree as FileNode[]);
+        await reloadTree();
+        refreshIndex();
         setSaveStatus('folder created');
       } catch (err) {
         setPlusError(err instanceof Error ? err.message : 'could not create folder');
@@ -1003,8 +1077,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
         setPlusPopupOpen(false);
         setPlusName('');
         openFile(path, { preserveStatus: true });
-        const result = await host.editor.tree();
-        setTree(result.tree as FileNode[]);
+        await reloadTree();
+        refreshIndex();
         setSavedText('');
         setFileText('');
         setSaveStatus('created');
@@ -1034,8 +1108,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
         setOpenFiles(next);
         if (activeFile === path || activeFile.startsWith(prefix)) setActiveFile(next[0] ?? '');
       }
-      const result = await host.editor.tree();
-      setTree(result.tree as FileNode[]);
+      await reloadTree();
+      refreshIndex();
     } catch (err) {
       setSaveStatus(err instanceof Error ? err.message : 'delete failed');
     }
@@ -1058,8 +1132,8 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
       }));
       if (activeFile === path) setActiveFile(newPath);
       else if (activeFile.startsWith(prefix)) setActiveFile(`${newPath}/${activeFile.slice(prefix.length)}`);
-      const result = await host.editor.tree();
-      setTree(result.tree as FileNode[]);
+      await reloadTree();
+      refreshIndex();
     } catch (err) {
       setSaveStatus(err instanceof Error ? err.message : 'rename failed');
     }
@@ -1117,6 +1191,24 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
             <small className="nav-section__count">{allFiles.length}</small>
             <div className="nav-section__actions">
               <button
+                className="nav-section__action"
+                title="refresh"
+                aria-label="refresh files"
+                disabled={refreshing}
+                onClick={() => { void handleRefresh(); }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  aria-hidden="true"
+                  className={`nav-section__refresh-icon${refreshing ? ' nav-section__refresh-icon--spinning' : ''}`}
+                >
+                  <path d="M8 3V1L5.5 3.5 8 6V4a4 4 0 1 1-4 4H2.5A5.5 5.5 0 1 0 8 3z" />
+                </svg>
+              </button>
+              <button
                 ref={plusBtnRef}
                 className={`nav-section__action${plusPopupOpen ? ' nav-section__action--open' : ''}`}
                 title="new entry"
@@ -1170,6 +1262,7 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
               nodes={tree}
               activePath={activeFile}
               onSelect={openFile}
+              onExpand={loadChildren}
               metaFor={(path) => {
                 const m = fileMeta(path);
                 return m ? { status: m.status, diagnostics: m.diagnostics } : undefined;
@@ -1487,8 +1580,27 @@ export function EditorPanel({ header, host }: BuiltinPluginProps) {
   );
 }
 
-function flattenFiles(nodes: FileNode[]): string[] {
-  return nodes.flatMap((node) => node.kind === 'file' ? [node.path] : flattenFiles(node.children));
+/* binary/asset extensions to skip when auto-opening a default file — the index
+   (rg --files) is complete and includes them, but they'd render as garbage text. */
+const BINARY_ASSET_EXT = /\.(png|jpe?g|gif|webp|ico|bmp|svg|pdf|zip|gz|tar|woff2?|ttf|otf|eot|mp[34]|mov|webm|wasm|so|dylib|dll|exe|bin)$/i;
+
+/* prefer a readme, else the first editable (non-binary) file, else anything. */
+function pickDefaultFile(files: string[]): string {
+  const readme = files.find((path) => path.toLowerCase().endsWith('readme.md'));
+  if (readme) return readme;
+  return files.find((path) => !BINARY_ASSET_EXT.test(path)) ?? files[0] ?? '';
+}
+
+/* merge a lazily-resolved level into the tree at folderPath, marking the folder
+   loaded so it isn't re-fetched on a later expand. */
+function mergeChildren(nodes: FileNode[], folderPath: string, children: FileNode[]): FileNode[] {
+  const segments = folderPath.split('/').filter(Boolean);
+  const [head, ...rest] = segments;
+  return nodes.map((node) => {
+    if (node.kind !== 'folder' || node.name !== head) return node;
+    if (rest.length === 0) return { ...node, children, loaded: true };
+    return { ...node, children: mergeChildren(node.children, rest.join('/'), children) };
+  });
 }
 
 function normalizeProjectLanguageConfig(value: unknown): ProjectLanguageConfig {

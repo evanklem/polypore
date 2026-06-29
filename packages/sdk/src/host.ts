@@ -174,6 +174,8 @@ export interface PolyporeHost {
   };
   editor: {
     tree(): Promise<{ tree: FileTreeNode[] }>;
+    listDir(path: string): Promise<{ tree: FileTreeNode[] }>;
+    listFiles(): Promise<{ files: string[] }>;
     open(path: string, opts?: { line?: number; col?: number }): Promise<{ opened: boolean; path: string }>;
     onOpen(fn: (event: { path: string }) => void): Unsubscribe;
     read(path: string): Promise<{ path: string; content: string }>;
@@ -683,6 +685,8 @@ export function createLoopbackHost(
     },
     editor: {
       tree: () => call<{ tree: FileTreeNode[] }>('editor.tree', {}),
+      listDir: (path) => call<{ tree: FileTreeNode[] }>('editor.listDir', { path }),
+      listFiles: () => call<{ files: string[] }>('editor.listFiles', {}),
       open: (path, opts) => call<{ opened: boolean; path: string }>('editor.open', { path, opts }),
       onOpen: (fn) => subscribe?.('editor:opened', (payload) => fn(payload as { path: string })) ?? (() => {}),
       read: (path) => call<{ path: string; content: string }>('editor.read', { path }),

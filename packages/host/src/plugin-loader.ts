@@ -235,6 +235,8 @@ function permissionForMethod(method: string): HostPermission | null {
     case 'knowledge.write':
       return 'knowledge.write';
     case 'editor.tree':
+    case 'editor.listDir':
+    case 'editor.listFiles':
     case 'editor.open':
     case 'editor.read':
       return 'editor.read';

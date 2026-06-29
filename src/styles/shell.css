@@ -496,16 +496,37 @@
 
 
 .nav-section__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 24px;
   padding: 0 7px;
   color: var(--accent);
-  font-size: 10px;
+  font-size: 16px;
+  line-height: 1;
 }
 
 
 .nav-section__action:hover {
   background: var(--accent-10);
   border-radius: var(--r-inset);
+}
+
+.nav-section__action:disabled {
+  cursor: default;
+}
+
+.nav-section__refresh-icon {
+  transform-origin: center;
+}
+
+.nav-section__refresh-icon--spinning {
+  animation: nav-section-refresh-spin 0.6s linear infinite;
+}
+
+@keyframes nav-section-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 
