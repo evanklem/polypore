@@ -129,6 +129,24 @@ export type FileTreeNode =
   | { kind: 'file'; name: string; path: string; subtitle?: string }
   | { kind: 'folder'; name: string; children: FileTreeNode[] };
 
+/* no-adapter fallbacks for the lazy editor.listDir / editor.listFiles handlers,
+   so headless hosts and tests still respond off the in-memory fileTree. */
+function sliceTreeLevel(tree: FileTreeNode[], path: string): FileTreeNode[] {
+  const segments = path.split('/').filter(Boolean);
+  let level = tree;
+  for (const segment of segments) {
+    const folder = level.find((node) => node.kind === 'folder' && node.name === segment);
+    if (!folder || folder.kind !== 'folder') return [];
+    level = folder.children;
+  }
+  // collapse folders at this level — children are resolved on demand
+  return level.map((node) => (node.kind === 'folder' ? { kind: 'folder', name: node.name, children: [] } : node));
+}
+
+function flattenTreeFiles(tree: FileTreeNode[]): string[] {
+  return tree.flatMap((node) => (node.kind === 'file' ? [node.path] : flattenTreeFiles(node.children)));
+}
+
 export type SkillRecord = {
   id: string;
   name: string;
@@ -297,6 +315,8 @@ export type ExternalOpener = (url: string) => Promise<boolean> | boolean;
 export type EditorSearchMatch = { file: string; line: number; text: string };
 export type FileSystemAdapter = {
   listTree?: () => Promise<FileTreeNode[]>;
+  listDir?: (path: string) => Promise<FileTreeNode[]>;
+  listFiles?: () => Promise<string[]>;
   readText?: (path: string) => Promise<string>;
   writeText?: (path: string, content: string) => Promise<void>;
   search?: (opts: { query: string; regex?: boolean; glob?: string; limit?: number }) => Promise<EditorSearchMatch[]>;
@@ -1565,6 +1585,24 @@ export class HostRpcServer {
       }
       return { tree: this.fileTree };
     });
+    /* lazy one-level listing — the explorer resolves a folder's children on
+       expand instead of walking the whole tree up front. without an adapter we
+       slice the in-memory fileTree so tests/headless hosts still respond. */
+    this.registerHandler('editor.listDir', async (params) => {
+      const { path } = params as { path: string };
+      if (this.fileSystemAdapter?.listDir) {
+        return { tree: await this.fileSystemAdapter.listDir(path) };
+      }
+      return { tree: sliceTreeLevel(this.fileTree, path) };
+    });
+    /* complete workspace file index — feeds quick-open and cross-file
+       resolution, kept separate from the lazily-loaded explorer tree. */
+    this.registerHandler('editor.listFiles', async () => {
+      if (this.fileSystemAdapter?.listFiles) {
+        return { files: await this.fileSystemAdapter.listFiles() };
+      }
+      return { files: flattenTreeFiles(this.fileTree) };
+    });
     this.registerHandler('editor.open', (params) => {
       const { path } = params as { path: string };
       this.publish('editor:opened', { path });
@@ -2640,6 +2678,8 @@ const RPC_PARAM_VALIDATORS: Record<string, ParamValidator> = {
   'ui.openExternal': (params) => validateRef('https://polypore.dev/schemas/rpc/ui.schema.json#/definitions/ui.openExternal.params', params),
   'state.get': objectShape({ key: { required: true, check: (value) => stringValue(value) && STATE_KEYS.has(value), message: 'key must be a known state key' } }),
   'editor.tree': emptyParams,
+  'editor.listDir': objectShape({ path: { required: true, check: stringValue, message: 'path must be a string' } }),
+  'editor.listFiles': emptyParams,
   'editor.open': objectShape({
     path: { required: true, check: stringValue, message: 'path must be a string' },
     opts: { check: looseObject, message: 'opts must be an object' },

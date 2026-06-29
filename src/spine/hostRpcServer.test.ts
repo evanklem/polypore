@@ -275,6 +275,52 @@ describe('HostRpcServer real-data adapters', () => {
     }
   });
 
+  test('editor.listDir delegates one directory level to the filesystem adapter', async () => {
+    const server = new HostRpcServer({});
+    server.setFileSystemAdapter({
+      listDir: async (path) => [
+        { kind: 'folder', name: 'nested', children: [] },
+        { kind: 'file', name: 'app.ts', path: `${path}/app.ts` },
+      ],
+    });
+
+    const response = await server.handle({
+      kind: 'request',
+      id: 1,
+      method: 'editor.listDir',
+      params: { path: 'src' },
+    });
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.result).toEqual({
+        tree: [
+          { kind: 'folder', name: 'nested', children: [] },
+          { kind: 'file', name: 'app.ts', path: 'src/app.ts' },
+        ],
+      });
+    }
+  });
+
+  test('editor.listFiles delegates the workspace index to the filesystem adapter', async () => {
+    const server = new HostRpcServer({});
+    server.setFileSystemAdapter({
+      listFiles: async () => ['README.md', 'src/deep/nested/leaf.rs'],
+    });
+
+    const response = await server.handle({
+      kind: 'request',
+      id: 1,
+      method: 'editor.listFiles',
+      params: {},
+    });
+
+    expect(response.ok).toBe(true);
+    if (response.ok) {
+      expect(response.result).toEqual({ files: ['README.md', 'src/deep/nested/leaf.rs'] });
+    }
+  });
+
   test('ui.openExternal delegates to the configured external opener', async () => {
     const opened: string[] = [];
     const server = new HostRpcServer();
