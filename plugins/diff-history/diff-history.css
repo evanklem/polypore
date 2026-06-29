@@ -685,7 +685,11 @@
 }
 
 
-.diff-line span {
+/* direct child only — this is the line-number gutter. Monaco's colorize()
+   output is also <span> (token spans) nested inside <code>; a bare
+   `.diff-line span` would out-specify the .mtkN token-color classes and flatten
+   syntax highlighting to the gutter color. */
+.diff-line > span {
   height: 100%;
   display: grid;
   place-items: center end;
