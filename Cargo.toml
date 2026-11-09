@@ -1,6 +1,6 @@
 [package]
 name = "polypore"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Polypore: a terminal dashboard for claude and codex sessions"
 license = "MIT"
