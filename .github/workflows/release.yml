@@ -4,7 +4,7 @@ name: release
 # and this builds the binaries and publishes a GitHub release with them.
 on:
   push:
-    tags: ['v[0-9]*']
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
 
 permissions:
   contents: write
