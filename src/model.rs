@@ -398,7 +398,12 @@ impl AgentRun {
                         return t.active.to_lowercase();
                     }
                 }
-                "thinking".into()
+                // Between tool calls: what it just did, so the line moves
+                // with the work instead of sitting on "thinking".
+                match self.last_tool() {
+                    Some(e) => format!("thinking · last: {}", e.text),
+                    None => "thinking".into(),
+                }
             }
             _ => plain(&self.last_reply),
         }
@@ -411,12 +416,61 @@ impl AgentRun {
         Some((self.ctx_tokens as f64 / window as f64 * 100.0).min(100.0))
     }
 
+    /// When the current (or last) turn began: the newest prompt.
+    pub fn turn_start(&self) -> Option<i64> {
+        self.events.iter().rev().find(|e| e.kind == EvKind::Prompt).map(|e| e.ts)
+    }
+
+    /// The newest tool call of the current turn.
+    pub fn last_tool(&self) -> Option<&Event> {
+        let start = self.turn_start().unwrap_or(i64::MIN);
+        self.events.iter().rev().take_while(|e| e.ts >= start).find(|e| e.kind == EvKind::Tool)
+    }
+
+    /// Failed commands still worth a look: from this turn (or the last 15
+    /// minutes when the prompt has scrolled out of the event log), not run
+    /// again successfully since, and not a search or test that just found
+    /// nothing (`grep` exits 1 on no match). Grouped by command, newest
+    /// first: (command, times failed, last failure).
+    pub fn open_problems(&self, now: i64) -> Vec<(String, u32, i64)> {
+        let since = self.turn_start().unwrap_or(now - 15 * 60_000);
+        let mut out: Vec<(String, u32, i64)> = Vec::new();
+        let mut fixed: Vec<&str> = Vec::new();
+        for c in self.cmds.iter().rev() {
+            if c.ts < since {
+                break;
+            }
+            match c.ok {
+                Some(true) => fixed.push(c.cmd.as_str()),
+                Some(false) if !fixed.contains(&c.cmd.as_str()) && !exit_1_means_no(&c.cmd) => {
+                    let key = one_line(&c.cmd, 60);
+                    match out.iter_mut().find(|e| e.0 == key) {
+                        Some(e) => e.1 += 1,
+                        None => out.push((key, 1, c.ts)),
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
     pub fn recent_files(&self, n: usize) -> Vec<&FileTouch> {
         let mut v: Vec<&FileTouch> = self.files.values().collect();
         v.sort_by(|a, b| b.last.cmp(&a.last));
         v.truncate(n);
         v
     }
+}
+
+/// Commands whose exit status 1 is an answer, not an error: the last one in
+/// the line decides the status, so `grep foo f` counts but `grep foo f | head`
+/// never failed in the first place.
+fn exit_1_means_no(cmd: &str) -> bool {
+    let last = cmd.rsplit(|c| c == '|' || c == ';' || c == '&').map(str::trim).find(|s| !s.is_empty()).unwrap_or("");
+    let prog = last.split_whitespace().next().unwrap_or("");
+    let prog = prog.rsplit('/').next().unwrap_or(prog);
+    matches!(prog, "grep" | "egrep" | "fgrep" | "zgrep" | "rg" | "ag" | "test" | "[" | "[[" | "diff" | "cmp" | "pgrep" | "which")
 }
 
 pub fn one_line(s: &str, max: usize) -> String {

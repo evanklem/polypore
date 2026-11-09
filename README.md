@@ -72,7 +72,7 @@ Secondary screens, top right: **skills**, **secrets**, **stats**.
 
 ### Sessions keep running
 
-Terminals live in a small background server (`polypore server`, started on its own by the dashboard), so closing or crashing polypore leaves claude, codex and your shells running. Reopening picks every one of them up where it was, screen included. Closing a session (`d`, `alt-W`) stops it; quitting polypore does not. The server exits a minute after its last terminal does. `[server] enabled = false` puts the terminals back inside the dashboard, closing with it.
+Terminals live in a small background server (`polypore server`, started on its own by the dashboard), so closing or crashing polypore leaves claude, codex and your shells running. Reopening picks every one of them up where it was, screen included. Closing a session (`d` on the list, `alt-W` inside it) stops it; quitting polypore does not. On a claude background job (`claude --bg`), `d` runs `claude stop` and `r` opens it with `claude attach`. A session running in some other terminal opens read-only, since two copies of one agent would write over each other's transcript; quit it there to resume it here. The server exits a minute after its last terminal does. `[server] enabled = false` puts the terminals back inside the dashboard, closing with it.
 
 ## Working with sessions
 
@@ -133,7 +133,7 @@ The footer and the inspector show claude's and codex's 5-hour and weekly limits,
 
 The footer always shows the few keys that matter on the current screen; `?` shows all of them.
 
-Lists: `j`/`k` move, `g`/`G` top and bottom, `enter` open, `esc` back, `/` filter, `s` search everything, `c`/`x`/`n` new claude/codex/terminal, `r` resume, `!` next session waiting for you, `S` stay awake, `T` next theme, `q` quit. Sessions: `i` prompt, `f` status filter, `space` mark, `e` rename, `A` archive, `F` fork, `>` hand off, `<` hand off to the other agent, `y` copy, `w`/`W` worktree session, `R` review, `D` hunks, `d` close. `:` command line. Projects: `p` pin, `H` hide, `a` add a folder, `.` show hidden. Skills: `s` link all, `a` adopt, `n` new, `e` edit, `d` drop a broken link, `r` refresh. Stats: `r` refresh, `m` ask a model, `o` open the report. Settings that change the machine or the look take a capital letter so they never flip by accident.
+Lists: `j`/`k` move, `g`/`G` top and bottom, `enter` open, `esc` back, `/` filter, `s` search everything, `c`/`x`/`n` new claude/codex/terminal, `r` resume, `!` next session waiting for you, `S` stay awake, `T` next theme, `q` quit. Sessions: `i` prompt, `f` status filter, `space` mark, `e` rename, `A` archive, `F` fork, `>` hand off, `<` hand off to the other agent, `y` copy, `w`/`W` worktree session, `R` review, `D` hunks, `d` close. `:` command line. Projects: `p` pin, `H` hide, `a` add a folder (missing folders are created; `Dev/x` means `~/Dev/x`), `.` show hidden. Skills: `s` link all, `a` adopt, `n` new, `e` edit, `d` drop a broken link, `r` refresh. Stats: `r` refresh, `m` ask a model, `o` open the report. Settings that change the machine or the look take a capital letter so they never flip by accident.
 
 Inside a session every key goes to the terminal except **alt** combinations:
 
@@ -142,11 +142,11 @@ Inside a session every key goes to the terminal except **alt** combinations:
 | `alt-q` | back to the session list |
 | `alt-h/j/k/l`, `alt-arrows` | move between panes |
 | `alt-H/J/K/L` | swap panes |
-| `alt-shift-arrows` | resize |
+| `alt-shift-arrows` | move the divider that way |
 | `alt-n` `alt-c` `alt-x` | split in a terminal, claude, codex |
 | `alt-a` | add a panel |
 | `alt-w` / `alt-W` | close the pane / the whole session |
-| `alt-z` `alt-o` | zoom, turn the split around |
+| `alt-z` `alt-o` | zoom, switch the split between side by side and stacked |
 | `alt-pgup` `alt-pgdn` | previous / next open session |
 | `alt-g` `alt-s` `alt-?` | what needs you, stay awake, all keys |
 
@@ -184,7 +184,7 @@ Colors: `theme = "auto"` follows your desktop palette on Omarchy (it reads the a
 
 Animations: drop `~/.config/polypore/anims/<name>.txt` with frames separated by a line holding `---` (optional first line `fps: 8`) and set `animation = "<name>"`. They play only while that agent is working.
 
-Layouts: `~/.config/polypore/layouts/default.toml` is the session template (agent over a terminal, inspector beside them). Rearranging an agent session saves a per-project copy next to it. Panels you can add with `alt-a`: inspector, tasks, files, activity, web, commands, subagents, usage, errors, diff, review.
+Layouts: `~/.config/polypore/layouts/default.toml` is the session template (agent over a terminal, with the inspector, activity feed and file tree beside them). Rearranging an agent session saves a per-project copy next to it. `:layout default` inside a session makes its layout the template for every project, `:layout save` for its project only, `:layout reset` drops the project's copy. Panels you can add with `alt-a`: inspector, tasks, files, activity, web, commands, subagents, usage, errors, diff, review.
 
 ## Stay awake
 

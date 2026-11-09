@@ -265,14 +265,15 @@ impl Layout {
     }
 
     /// Grows (delta > 0) or shrinks the leaf along `dir`.
+    /// Moves the nearest divider of the focused pane that runs across
+    /// `dir`: a positive delta moves it right (or down), like the arrow
+    /// key pressed, whichever side of it the pane is on.
     pub fn resize(&mut self, id: u64, dir: Dir, delta: f32) {
         let Some(path) = self.path_of(id) else { return };
         for depth in (0..path.len()).rev() {
-            let side_b = path[depth];
             if let Some(Node::Split { dir: d, ratio, .. }) = self.at_mut(&path[..depth]) {
                 if *d == dir {
-                    let r = if side_b { *ratio - delta } else { *ratio + delta };
-                    *ratio = r.clamp(0.1, 0.9);
+                    *ratio = (*ratio + delta).clamp(0.1, 0.9);
                     return;
                 }
             }
@@ -455,7 +456,7 @@ fn split_rect(area: Rect, dir: Dir, ratio: f32, gap: u16) -> (Rect, Rect, u16) {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum NodeSpec {
     Split { dir: Dir, ratio: f32, a: Box<NodeSpec>, b: Box<NodeSpec> },
@@ -470,23 +471,43 @@ pub struct LayoutFile {
 
 /// Default focus layout: agent terminal over a shell split on the left, the
 /// overview, files and activity stacked on the right.
+/// The agent over a shell, and beside them the inspector, the activity
+/// feed and the file tree.
 pub fn default_spec() -> NodeSpec {
     use NodeSpec::*;
     Split {
         dir: Dir::H,
         ratio: 0.63,
-        a: Box::new(Split {
-            dir: Dir::V,
-            ratio: 0.75,
-            a: Box::new(Term { slot: 0, role: "agent".into() }),
-            b: Box::new(Term { slot: 1, role: "shell".into() }),
-        }),
+        a: Box::new(agent_over_shell()),
         b: Box::new(Split {
             dir: Dir::V,
-            ratio: 0.55,
+            ratio: 0.4,
             a: Box::new(Comp { comp: crate::layout::Comp::Inspector }),
-            b: Box::new(Comp { comp: crate::layout::Comp::Files }),
+            b: Box::new(Split {
+                dir: Dir::V,
+                ratio: 0.55,
+                a: Box::new(Comp { comp: crate::layout::Comp::Activity }),
+                b: Box::new(Comp { comp: crate::layout::Comp::Files }),
+            }),
         }),
+    }
+}
+
+fn agent_over_shell() -> NodeSpec {
+    use NodeSpec::*;
+    Split { dir: Dir::V, ratio: 0.75, a: Box::new(Term { slot: 0, role: "agent".into() }), b: Box::new(Term { slot: 1, role: "shell".into() }) }
+}
+
+/// The default polypore wrote before the activity feed was in it. A
+/// default.toml still holding exactly this was never edited, so it moves
+/// up to the current default.
+fn old_default_spec() -> NodeSpec {
+    use NodeSpec::*;
+    Split {
+        dir: Dir::H,
+        ratio: 0.63,
+        a: Box::new(agent_over_shell()),
+        b: Box::new(Split { dir: Dir::V, ratio: 0.55, a: Box::new(Comp { comp: crate::layout::Comp::Inspector }), b: Box::new(Comp { comp: crate::layout::Comp::Files }) }),
     }
 }
 
@@ -496,27 +517,40 @@ pub fn layouts_dir() -> std::path::PathBuf {
 
 pub fn load_template(project_key: &str) -> NodeSpec {
     let dir = layouts_dir();
-    for name in [format!("{project_key}.toml"), "default.toml".to_string()] {
-        if let Ok(text) = std::fs::read_to_string(dir.join(&name)) {
-            if let Ok(f) = toml::from_str::<LayoutFile>(&text) {
+    if let Ok(text) = std::fs::read_to_string(dir.join(format!("{project_key}.toml"))) {
+        if let Ok(f) = toml::from_str::<LayoutFile>(&text) {
+            return f.layout;
+        }
+    }
+    let path = dir.join("default.toml");
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Ok(f) = toml::from_str::<LayoutFile>(&text) {
+            if f.layout != old_default_spec() {
                 return f.layout;
             }
         }
     }
     let spec = default_spec();
-    let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("default.toml");
-    if !path.exists() {
-        if let Ok(body) = toml::to_string_pretty(&LayoutFile { layout: spec.clone() }) {
-            let _ = std::fs::write(
-                path,
-                format!(
-                    "# Default focus layout. Leaves are {{type = \"term\", role = \"agent\"|\"shell\"}}\n# or {{type = \"comp\", comp = \"overview\"|\"tasks\"|\"files\"|\"activity\"|\"web\"|\"commands\"|\"subagents\"|\"usage\"|\"errors\"|\"diff\"}}.\n# Splits: dir = \"h\" (side by side) or \"v\" (stacked), ratio = share of the first child.\n# Per-project copies are saved next to this file when you rearrange a layout.\n\n{body}"
-                ),
-            );
-        }
+    let stale = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<LayoutFile>(&t).ok()).map(|f| f.layout == old_default_spec()).unwrap_or(false);
+    if !path.exists() || stale {
+        save_default(&spec);
     }
     spec
+}
+
+/// Writes the template every project's new sessions start from, unless the
+/// project has a layout of its own.
+pub fn save_default(spec: &NodeSpec) {
+    let dir = layouts_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(body) = toml::to_string_pretty(&LayoutFile { layout: spec.clone() }) {
+        let _ = std::fs::write(
+            dir.join("default.toml"),
+            format!(
+                "# Default session layout, for every project without a layout of its own.\n# `:layout default` inside a session saves that session's layout here;\n# `:layout save` saves it for its project only. Or edit this file.\n#\n# Leaves are {{type = \"term\", role = \"agent\"|\"shell\"}}\n# or {{type = \"comp\", comp = \"inspector\"|\"tasks\"|\"files\"|\"activity\"|\"web\"|\"commands\"|\"subagents\"|\"usage\"|\"errors\"|\"diff\"|\"review\"}}.\n# Splits: dir = \"h\" (side by side) or \"v\" (stacked), ratio = share of the first child.\n\n{body}"
+            ),
+        );
+    }
 }
 
 pub fn save_template(project_key: &str, spec: &NodeSpec) {

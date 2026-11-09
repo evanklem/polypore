@@ -579,13 +579,16 @@ impl Conn {
                             }
                             _ => {
                                 let _ = rtx.send((tag, pane, body));
+                                continue;
                             }
                         }
+                        crate::wake::poke();
                     }
                     alive.store(false, Ordering::SeqCst);
                     for tx in routes.lock().unwrap().values() {
                         let _ = tx.send(PaneMsg::Lost);
                     }
+                    crate::wake::poke();
                 })
                 .map_err(|e| e.to_string())?;
         }

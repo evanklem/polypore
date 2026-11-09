@@ -54,10 +54,14 @@ fn layout_neighbor_swap_resize_and_spec_roundtrip() {
     assert_eq!(l.kind_of(a), Some(LeafKind::Comp(Comp::Tasks)));
     assert_eq!(l.kind_of(c), Some(LeafKind::Term(1)));
     let before = l.compute(Rect::new(0, 0, 120, 40), 1, true).0;
+    let w = |v: &Vec<(u64, Rect)>, id| v.iter().find(|r| r.0 == id).unwrap().1.width;
+    // Arrow keys move the divider that way, from either side of it.
     l.resize(b, Dir::H, 0.1);
     let after = l.compute(Rect::new(0, 0, 120, 40), 1, true).0;
-    let w = |v: &Vec<(u64, Rect)>, id| v.iter().find(|r| r.0 == id).unwrap().1.width;
-    assert!(w(&after, b) > w(&before, b), "growing b widens it");
+    assert!(w(&after, b) < w(&before, b) && w(&after, a) > w(&before, a), "right from the right pane moves the divider right");
+    l.resize(a, Dir::H, -0.1);
+    let back_left = l.compute(Rect::new(0, 0, 120, 40), 1, true).0;
+    assert!(w(&back_left, a) < w(&after, a), "left from the left pane moves the divider left");
     let spec = l.to_spec(|p| Some((p as usize - 1, String::new()))).unwrap();
     let text = toml::to_string(&crate::layout::LayoutFile { layout: spec.clone() }).unwrap();
     let back: crate::layout::LayoutFile = toml::from_str(&text).unwrap();
@@ -77,7 +81,9 @@ fn default_layout_parses_from_its_own_toml() {
         Some(roles.len() as u64)
     });
     assert_eq!(roles, vec!["agent", "shell"]);
-    assert_eq!(l.leaves().len(), 4);
+    assert_eq!(l.leaves().len(), 5);
+    assert!(l.leaves().iter().any(|(_, k)| *k == LeafKind::Comp(Comp::Activity)), "the activity feed is beside a new session");
+    assert_eq!(back.layout, crate::layout::default_spec(), "round-trips exactly, so an untouched file is recognised");
 }
 
 #[test]
@@ -422,6 +428,8 @@ fn agent_commands_for_resume_fork_and_prompt() {
     assert_eq!(agent_command(&cfg, PaneKind::Claude, &Launch::resume(k(AgentKind::Claude))).unwrap(), "claude --resume abc");
     assert_eq!(agent_command(&cfg, PaneKind::Claude, &Launch { resume: Some(k(AgentKind::Claude)), fork: true, ..Default::default() }).unwrap(), "claude --resume abc --fork-session");
     assert_eq!(agent_command(&cfg, PaneKind::Codex, &Launch { resume: Some(k(AgentKind::Codex)), fork: true, ..Default::default() }).unwrap(), "codex fork abc");
+    let job = RunKey { kind: AgentKind::Claude, id: "cdeb890f-6a4f-422f-be76-36471b6c2631".into() };
+    assert_eq!(agent_command(&cfg, PaneKind::Claude, &Launch { resume: Some(job), attach: true, args: "--permission-mode plan".into(), ..Default::default() }).unwrap(), "claude attach cdeb890f");
     assert_eq!(agent_command(&cfg, PaneKind::Codex, &Launch { resume: Some(k(AgentKind::Codex)), prompt: Some("go on, it's fine".into()), ..Default::default() }).unwrap(), "codex resume abc 'go on, it'\\''s fine'");
     assert_eq!(agent_command(&cfg, PaneKind::Shell, &Launch::default()), None);
     assert_eq!(agent_command(&cfg, PaneKind::Claude, &Launch { args: "--permission-mode plan".into(), prompt: Some("hi".into()), ..Default::default() }).unwrap(), "claude --permission-mode plan hi");
@@ -549,4 +557,70 @@ fn mascot_rows_have_stable_width() {
             }
         }
     }
+}
+
+#[test]
+fn typed_project_paths_resolve_from_home() {
+    let home = dirs::home_dir().unwrap();
+    assert_eq!(crate::app::project_path("Dev/NewProject"), home.join("Dev/NewProject"));
+    assert_eq!(crate::app::project_path("~/Dev/NewProject/"), home.join("Dev/NewProject"));
+    assert_eq!(crate::app::project_path("~"), home);
+    assert_eq!(crate::app::project_path("/srv/thing"), std::path::PathBuf::from("/srv/thing"));
+    assert!(crate::app::project_path("  ".trim()).as_os_str().is_empty());
+}
+
+#[test]
+fn pane_links_to_the_claude_session_that_has_a_transcript() {
+    use crate::procs::{pick_claude_session, ClaudeCand};
+    let c = |id: &str, updated: i64, has_transcript: bool| ClaudeCand { id: id.into(), cwd: "/p".into(), updated, has_transcript };
+    // Plain claude in a pane: its own session.
+    assert_eq!(pick_claude_session(&[c("own", 5, true), c("job", 9, true)]).as_deref(), Some("own"));
+    // The prompt went to a background job: the front session stays empty.
+    assert_eq!(pick_claude_session(&[c("own", 5, false), c("spare", 9, false), c("job1", 6, true), c("job2", 8, true)]).as_deref(), Some("job2"));
+    // Nothing written yet anywhere: keep the pane's own session.
+    assert_eq!(pick_claude_session(&[c("own", 5, false), c("spare", 9, false)]).as_deref(), Some("own"));
+    assert_eq!(pick_claude_session(&[]), None);
+    // The daemon's workers for other projects are descendants too; they
+    // never claim the pane.
+    let elsewhere = ClaudeCand { id: "other-project".into(), cwd: "/q".into(), updated: 99, has_transcript: true };
+    assert_eq!(pick_claude_session(&[c("own", 5, false), elsewhere.clone(), c("job", 6, true)]).as_deref(), Some("job"));
+    assert_eq!(pick_claude_session(&[c("own", 5, false), elsewhere]).as_deref(), Some("own"));
+}
+
+#[test]
+fn proc_start_reads_field_22_past_a_spaced_command_name() {
+    let stat = "4242 (Web Content x) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 372451 999 0";
+    assert_eq!(crate::store::proc_start_field(stat).as_deref(), Some("372451"));
+    assert_eq!(crate::store::proc_start_field("garbage"), None);
+    // This process, read back the way claude records it.
+    let me = std::process::id();
+    let mine = std::fs::read_to_string(format!("/proc/{me}/stat")).ok().and_then(|s| crate::store::proc_start_field(&s));
+    if let Some(start) = mine {
+        assert!(crate::store::same_process(me, &start));
+        assert!(!crate::store::same_process(me, "1"), "a reused pid with another start time is not the session's");
+        assert!(crate::store::same_process(me, ""), "no recorded start time: trust the pid");
+    }
+}
+
+#[test]
+fn problems_clear_once_fixed_or_a_new_turn_starts() {
+    use crate::model::{AgentKind, AgentRun, CmdRun, EvKind, RunKey};
+    let mut r = AgentRun::new(RunKey { kind: AgentKind::Claude, id: "x".into() }, std::path::PathBuf::new());
+    let cmd = |r: &mut AgentRun, c: &str, ts: i64, ok: bool| r.push_cmd(CmdRun { cmd: c.into(), desc: String::new(), ts, ok: Some(ok), background: false, duration_ms: None });
+    r.push_event(100, EvKind::Prompt, "fix the build");
+    cmd(&mut r, "cargo build", 110, false);
+    cmd(&mut r, "grep -n missing src/app.rs", 115, false);
+    cmd(&mut r, "cargo test", 120, false);
+    cmd(&mut r, "cargo test", 125, false);
+    cmd(&mut r, "cargo build", 130, true);
+    let p = r.open_problems(200);
+    assert_eq!(p.len(), 1, "the build was fixed and grep only found nothing: {p:?}");
+    assert_eq!((p[0].0.as_str(), p[0].1), ("cargo test", 2));
+    // The next prompt starts clean.
+    r.push_event(300, EvKind::Prompt, "now the docs");
+    assert!(r.open_problems(400).is_empty());
+    // Between tool calls the working line says what it just did.
+    r.push_event(310, EvKind::Tool, "reading README.md");
+    r.turn_open = true;
+    assert_eq!(r.activity(crate::model::RunState::Working), "thinking · last: reading README.md");
 }

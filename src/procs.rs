@@ -124,20 +124,64 @@ pub fn detect(root: u32, table: &HashMap<u32, Proc>, cwd: &str, since_ms: i64) -
     None
 }
 
+/// One `~/.claude/sessions/<pid>.json` found in a pane's process tree.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClaudeCand {
+    pub id: String,
+    pub cwd: String,
+    pub updated: i64,
+    pub has_transcript: bool,
+}
+
 fn claude_session_for(pid: u32, table: &HashMap<u32, Proc>) -> Option<RunKey> {
-    let mut cands = vec![pid];
-    cands.extend(descendants(pid, table));
-    for c in cands {
+    let mut pids = vec![pid];
+    pids.extend(descendants(pid, table));
+    let mut cands = Vec::new();
+    for c in pids {
         let path = claude_dir().join("sessions").join(format!("{c}.json"));
-        if let Ok(text) = std::fs::read_to_string(&path) {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(id) = v.get("sessionId").and_then(|s| s.as_str()) {
-                    return Some(RunKey { kind: AgentKind::Claude, id: id.to_string() });
-                }
-            }
-        }
+        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { continue };
+        let Some(id) = v.get("sessionId").and_then(|s| s.as_str()) else { continue };
+        let cwd = v.get("cwd").and_then(|s| s.as_str()).unwrap_or("");
+        let updated = v.get("updatedAt").and_then(|n| n.as_i64()).unwrap_or(0);
+        cands.push(ClaudeCand { id: id.to_string(), cwd: cwd.to_string(), updated, has_transcript: claude_transcript_exists(id, cwd) });
     }
-    None
+    pick_claude_session(&cands).map(|id| RunKey { kind: AgentKind::Claude, id })
+}
+
+/// Which session a pane shows. The pane's own claude comes first, but
+/// claude can hand a prompt to a background job (its daemon is a child
+/// of the pane's claude, with a session of its own). Then the front
+/// session never gets a transcript, and the job's is the one with content:
+/// the most recently updated session that has a transcript wins. With no
+/// transcript anywhere yet, the pane's own session, which fills in later.
+///
+/// Only jobs in the pane's own folder count: the daemon outlives the claude
+/// that started it and supervises every background job on the machine, so
+/// its other workers belong to other projects.
+pub fn pick_claude_session(cands: &[ClaudeCand]) -> Option<String> {
+    let own = cands.first()?;
+    if own.has_transcript {
+        return Some(own.id.clone());
+    }
+    cands
+        .iter()
+        .filter(|c| c.has_transcript && c.cwd == own.cwd)
+        .max_by_key(|c| c.updated)
+        .or(Some(own))
+        .map(|c| c.id.clone())
+}
+
+/// Claude stores a transcript at `projects/<cwd with every non-alphanumeric
+/// char as '-'>/<id>.jsonl`; checks that folder, then the others.
+fn claude_transcript_exists(id: &str, cwd: &str) -> bool {
+    let projects = claude_dir().join("projects");
+    let file = format!("{id}.jsonl");
+    let enc: String = cwd.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
+    if !cwd.is_empty() && projects.join(&enc).join(&file).exists() {
+        return true;
+    }
+    std::fs::read_dir(&projects).map(|rd| rd.flatten().any(|d| d.path().join(&file).exists())).unwrap_or(false)
 }
 
 fn codex_session_for(pid: u32, table: &HashMap<u32, Proc>, cwd: &str, since_ms: i64) -> Option<RunKey> {
@@ -198,7 +242,9 @@ fn newest_rollout(cwd: &str, since_ms: i64) -> Option<RunKey> {
                 continue;
             }
             let (c, _, _, _) = crate::sources::codex::scan_meta(&p);
-            if c == cwd || cwd.starts_with(&c) || c.starts_with(cwd) {
+            // The same folder only: a rollout from a parent folder (say,
+            // codex run in ~) or a subfolder is some other session.
+            if c == cwd {
                 best = Some((mt, p));
             }
         }

@@ -233,6 +233,13 @@ pub fn open_pty(id: u64, spec: &SpawnSpec, rows: u16, cols: u16) -> anyhow::Resu
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("TERM_PROGRAM", "polypore");
+    // claude (and other node CLIs, through supports-hyperlinks) only style
+    // file paths and URLs as links, in blue, when they recognise the
+    // terminal, and they do not know TERM_PROGRAM=polypore. The OSC 8
+    // wrapper is dropped when the pane is parsed; the colour stays.
+    if std::env::var_os("FORCE_HYPERLINK").is_none() {
+        cmd.env("FORCE_HYPERLINK", "1");
+    }
     cmd.env("POLYPORE", "1");
     cmd.env("POLYPORE_PANE", id.to_string());
     for k in &spec.env_remove {
@@ -278,9 +285,11 @@ impl Pane {
                         if tx.send(PaneMsg::Data(buf[..n].to_vec())).is_err() {
                             break;
                         }
+                        crate::wake::poke();
                     }
                 }
             }
+            crate::wake::poke();
         })?;
         let cb = Cb { size: (rows, cols), ..Default::default() };
         let parser = vt100::Parser::new_with_callbacks(nz(rows), nz(cols), 5000, cb);

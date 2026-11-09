@@ -506,6 +506,8 @@ pub fn live_claude() -> Vec<LiveClaude> {
         kind: String,
         #[serde(rename = "waitingFor")]
         waiting_for: String,
+        #[serde(rename = "procStart")]
+        proc_start: String,
     }
     let mut out = Vec::new();
     if let Ok(rd) = std::fs::read_dir(claude_dir().join("sessions")) {
@@ -516,7 +518,7 @@ pub fn live_claude() -> Vec<LiveClaude> {
             }
             let Ok(text) = std::fs::read_to_string(&p) else { continue };
             let Ok(s) = serde_json::from_str::<S>(&text) else { continue };
-            if s.pid == 0 || s.session_id.is_empty() || !pid_alive(s.pid) {
+            if s.pid == 0 || s.session_id.is_empty() || !same_process(s.pid, &s.proc_start) {
                 continue;
             }
             out.push(LiveClaude {
@@ -551,6 +553,8 @@ pub fn live_claude() -> Vec<LiveClaude> {
         pid: u32,
         #[serde(rename = "sessionId")]
         session_id: String,
+        #[serde(rename = "procStart")]
+        proc_start: String,
     }
     let roster: Roster = std::fs::read_to_string(claude_dir().join("daemon/roster.json"))
         .ok()
@@ -563,7 +567,7 @@ pub fn live_claude() -> Vec<LiveClaude> {
             if j.session_id.is_empty() || out.iter().any(|l| l.session_id == j.session_id) {
                 continue;
             }
-            let worker = roster.workers.values().find(|w| w.session_id == j.session_id && pid_alive(w.pid));
+            let worker = roster.workers.values().find(|w| w.session_id == j.session_id && same_process(w.pid, &w.proc_start));
             let Some(w) = worker else { continue };
             out.push(LiveClaude {
                 pid: w.pid,
@@ -577,6 +581,41 @@ pub fn live_claude() -> Vec<LiveClaude> {
         }
     }
     out
+}
+
+/// Whether `pid` is still the process claude recorded. Claude writes the
+/// process start time (`procStart`, field 22 of /proc/<pid>/stat) next to
+/// the pid; after a reboot, or a long uptime, pids are handed out again and
+/// a leftover session file would otherwise mark its session as running
+/// somewhere, which keeps polypore from resuming it.
+pub fn same_process(pid: u32, proc_start: &str) -> bool {
+    if !pid_alive(pid) {
+        return false;
+    }
+    match (proc_start.is_empty(), proc_start_of(pid)) {
+        (false, Some(now)) => now == proc_start,
+        _ => true,
+    }
+}
+
+fn proc_start_of(pid: u32) -> Option<String> {
+    #[cfg(target_os = "linux")]
+    {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        proc_start_field(&stat)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = pid;
+        None
+    }
+}
+
+/// Field 22 (starttime) of a /proc/<pid>/stat line. The command name in
+/// field 2 is in parens and may hold spaces, so count from its end.
+pub fn proc_start_field(stat: &str) -> Option<String> {
+    let rest = &stat[stat.rfind(')')? + 1..];
+    rest.split_whitespace().nth(19).map(String::from)
 }
 
 pub fn pid_alive(pid: u32) -> bool {

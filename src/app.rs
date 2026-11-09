@@ -25,6 +25,7 @@ use crate::skills;
 use crate::sleep::Sleep;
 use crate::store::{self, Shared, SharedWants};
 use crate::theme::Theme;
+use crate::wake::Wake;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum View {
@@ -104,6 +105,8 @@ pub enum Action {
     /// Close a worktree session and merge, keep or delete its branch.
     FinishWorktree(u64, WtEnd),
     RevertHunk(u64, usize),
+    /// `claude stop` a background job.
+    StopJob(RunKey),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,6 +251,9 @@ pub struct Launch {
     pub prompt: Option<String>,
     /// Extra agent flags (from a preset), placed after the command.
     pub args: String,
+    /// The session runs as a claude background job: open it with
+    /// `claude attach` instead of resuming a second copy.
+    pub attach: bool,
 }
 
 impl Launch {
@@ -356,6 +362,8 @@ pub struct App {
     pub hunk_cache: Arc<Mutex<HashMap<String, (Instant, Arc<Vec<crate::hunks::FileDiff>>)>>>,
     pub search: crate::search::Shared,
     /// The hits shown in the search overlay, as of the last draw.
+    /// Workspaces already warned about running another project's session.
+    pub misplaced_warned: HashSet<u64>,
     pub search_hits: Vec<crate::search::Hit>,
 }
 
@@ -468,6 +476,7 @@ impl App {
             hunk_cache: Arc::new(Mutex::new(HashMap::new())),
             search: Arc::new(Mutex::new(crate::search::Index::default())),
             search_hits: Vec::new(),
+            misplaced_warned: HashSet::new(),
         }
     }
 
@@ -554,7 +563,26 @@ impl App {
         self.restore_awake();
         self.restore_running();
         let mut last_draw = Instant::now() - Duration::from_secs(1);
+        let (tx, rx) = std::sync::mpsc::channel();
+        crate::wake::install(tx.clone());
+        std::thread::Builder::new().name("polypore-input".into()).spawn(move || loop {
+            match event::read() {
+                Ok(ev) => {
+                    if tx.send(Wake::Input(ev)).is_err() {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(Wake::Lost(e.to_string()));
+                    break;
+                }
+            }
+        })?;
+        // Output-driven redraws are capped at ~200 fps; input and output both
+        // wake the loop right away instead of waiting out the idle timeout.
+        let min_gap = Duration::from_millis(5);
         while !self.quit {
+            crate::wake::clear();
             let mut active = false;
             let ids: Vec<u64> = self.panes.keys().copied().collect();
             let visible_now = self.visible_panes();
@@ -585,30 +613,38 @@ impl App {
             self.periodic();
             let animating = self.animating();
             let frame_due = animating && last_draw.elapsed() >= Duration::from_millis(1000 / self.cfg.ui.fps.max(1) as u64);
-            if self.dirty || frame_due || last_draw.elapsed() > Duration::from_secs(1) {
+            let since = last_draw.elapsed();
+            if (self.dirty && since >= min_gap) || frame_due || since > Duration::from_secs(1) {
                 self.dirty = false;
                 term.draw(|f| self.draw(f))?;
                 last_draw = Instant::now();
             }
-            let timeout = if active {
-                Duration::from_millis(8)
+            // `active` covers a pane that hit its drain budget with output
+            // still queued and no fresh nudge coming.
+            let timeout = if self.dirty || active {
+                min_gap.saturating_sub(last_draw.elapsed())
             } else if animating {
                 Duration::from_millis(30)
             } else {
                 Duration::from_millis(120)
             };
-            if event::poll(timeout)? {
-                // Drain a burst of events before redrawing.
-                let mut n = 0;
-                loop {
-                    let ev = event::read()?;
-                    self.on_event(ev);
-                    n += 1;
-                    if n > 256 || !event::poll(Duration::from_millis(0))? {
-                        break;
+            let mut next = rx.recv_timeout(timeout).ok();
+            // Drain a burst of events before redrawing.
+            let mut n = 0;
+            while let Some(w) = next.take() {
+                match w {
+                    Wake::Input(ev) => {
+                        self.on_event(ev);
+                        self.dirty = true;
                     }
+                    Wake::Output => {}
+                    Wake::Lost(e) => anyhow::bail!("reading the terminal: {e}"),
                 }
-                self.dirty = true;
+                n += 1;
+                if n > 256 {
+                    break;
+                }
+                next = rx.try_recv().ok();
             }
         }
         self.save_workspaces();
@@ -713,13 +749,14 @@ impl App {
             }
             let Some(pid) = p.pid else { continue };
             p.fg = procs::foreground(pid, &table).filter(|n| !matches!(n.as_str(), "bash" | "zsh" | "fish" | "sh" | "dash" | "nu" | "xonsh"));
+            // The pane's own process (the shell, or the agent it runs) is
+            // where the user is. Its newest descendant is often a helper
+            // such as an editor's git or LSP child sitting in some file's
+            // folder, which would send new splits there.
             #[cfg(target_os = "linux")]
-            {
-                let leaf = procs::descendants(pid, &table).into_iter().max().unwrap_or(pid);
-                if let Some(c) = procs::cwd_of(leaf).or_else(|| procs::cwd_of(pid)) {
-                    if !c.is_empty() {
-                        p.cwd = c;
-                    }
+            if let Some(c) = procs::cwd_of(pid) {
+                if !c.is_empty() {
+                    p.cwd = c;
                 }
             }
             match procs::detect(pid, &table, &p.cwd, p.created) {
@@ -916,6 +953,7 @@ impl App {
         let f = self.filter.to_lowercase();
         let mut rows: Vec<(u8, i64, Card)> = Vec::new();
         let mut shown: HashSet<RunKey> = HashSet::new();
+        let mut misplaced: Vec<(u64, String)> = Vec::new();
         for ws in self.workspaces.iter().filter(|w| w.project == root) {
             let run = self.ws_run(ws);
             let agent_live = self.ws_agent_pane(ws).is_some();
@@ -925,6 +963,12 @@ impl App {
                 None if ws.observed.is_some() => RunState::Closed,
                 None => RunState::Ready,
             };
+            if let Some(other) = run.as_ref().and_then(|k| snap.sessions.get(k)).map(|s| s.root.clone()).filter(|r| !r.is_empty() && *r != ws.project) {
+                if !self.misplaced_warned.contains(&ws.id) {
+                    let name = Path::new(&other).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(other.clone());
+                    misplaced.push((ws.id, format!("\"{}\" is a {name} session running in this project's folder; d closes it here, then resume it from {name}", ws.name)));
+                }
+            }
             let shell_only = !agent_live && ws.observed.is_none();
             let group = if shell_only { 3 } else { group_of(state) };
             if let Some(r) = &run {
@@ -932,6 +976,10 @@ impl App {
             }
             let updated = run.as_ref().and_then(|k| snap.runs.get(k)).map(|r| r.updated).unwrap_or(ws.seen);
             rows.push((group, updated, Card { kind: CardKind::Hosted(ws.id), run, state, group }));
+        }
+        for (id, msg) in misplaced {
+            self.misplaced_warned.insert(id);
+            self.say(msg, Tone::Warn);
         }
         if let Some(p) = snap.projects.iter().find(|p| p.root == root) {
             for k in p.sessions.iter().take(self.cfg.ui.recent_sessions.max(8)) {
@@ -1013,22 +1061,101 @@ impl App {
 
     fn resume_card(&mut self, i: usize) {
         let Some(card) = self.cards.get(i).cloned() else { return };
-        let Some(k) = card.run else { return };
         if let CardKind::Hosted(ws) = card.kind {
             self.focus_ws(ws);
             return;
         }
-        let live = self.shared.lock().unwrap().runs.get(&k).map(|r| r.is_live()).unwrap_or(false);
-        if live {
-            self.say("that session is running in another terminal; opening it read-only instead", Tone::Warn);
+        let Some(k) = card.run else { return };
+        self.resume_session(k);
+    }
+
+    /// Resumes a session in a polypore terminal, in its own project and
+    /// folder. One polypore already runs is focused; one a claude
+    /// background job holds is attached (`claude attach`); one running in
+    /// some other terminal opens read-only, since two agents writing one
+    /// transcript would garble it.
+    fn resume_session(&mut self, k: RunKey) {
+        if let Some(ws) = self.pane_for_run(&k).and_then(|p| self.ws_for_pane(p)) {
+            self.focus_ws(ws);
+            return;
+        }
+        let (live, job) = self.shared.lock().unwrap().runs.get(&k).map(|r| (r.is_live(), r.background_job)).unwrap_or((false, false));
+        let job = job && k.kind == AgentKind::Claude;
+        if live && !job {
+            let msg = self.elsewhere_msg(&k);
+            self.say(msg, Tone::Warn);
             self.observe(k);
             return;
         }
+        let cwd = self.enter_session_project(&k);
         let pk = match k.kind {
             AgentKind::Claude => PaneKind::Claude,
             AgentKind::Codex => PaneKind::Codex,
         };
-        self.new_workspace(Some(pk), Launch::resume(k));
+        // An attached job's observed view is replaced by the terminal.
+        if job {
+            if let Some(id) = self.workspaces.iter().find(|w| w.observed.as_ref() == Some(&k)).map(|w| w.id) {
+                self.close_workspace_now(id);
+            }
+        }
+        self.new_workspace_with(Some(pk), Launch { resume: Some(k), attach: job, ..Default::default() }, WsOpts { cwd, ..Default::default() });
+    }
+
+    /// Why polypore won't resume a session, and what to do about it.
+    fn elsewhere_msg(&self, k: &RunKey) -> String {
+        match self.shared.lock().unwrap().runs.get(k).and_then(|r| r.live_pid) {
+            Some(pid) => format!("running in another terminal (pid {pid}); quit it there to resume it here"),
+            None => "running in another terminal; quit it there to resume it here".into(),
+        }
+    }
+
+    /// The project and folder a session belongs to, from its transcript.
+    fn session_home(&self, k: &RunKey) -> Option<(String, String)> {
+        let snap = self.shared.lock().unwrap();
+        let s = snap.sessions.get(k)?;
+        (!s.root.is_empty()).then(|| (s.root.clone(), s.cwd.clone()))
+    }
+
+    /// Opens a session's own project, so viewing or resuming it never
+    /// lands in whichever project happened to be open. Returns the folder
+    /// to resume it in.
+    fn enter_session_project(&mut self, k: &RunKey) -> Option<String> {
+        let (root, cwd) = self.session_home(k)?;
+        if self.project.as_deref() != Some(root.as_str()) {
+            self.open_project(root);
+        }
+        Path::new(&cwd).is_dir().then_some(cwd)
+    }
+
+    /// `d` on a session polypore does not run: stop it if it is a claude
+    /// background job, else say where it runs.
+    fn close_unhosted(&mut self, k: RunKey) {
+        let (live, job) = self.shared.lock().unwrap().runs.get(&k).map(|r| (r.is_live(), r.background_job)).unwrap_or((false, false));
+        if live && job && k.kind == AgentKind::Claude {
+            self.overlay = Some(Overlay::Confirm {
+                msg: vec![format!("stop background job {}?", job_short(&k.id)), "the conversation is kept; r resumes it later.".into()],
+                action: Action::StopJob(k),
+            });
+        } else if live {
+            let msg = self.elsewhere_msg(&k);
+            self.say(msg.replace("to resume it here", "to close it"), Tone::Warn);
+        } else {
+            self.say("that session is already closed; A archives it", Tone::Info);
+        }
+    }
+
+    fn stop_job(&mut self, k: &RunKey) {
+        let cmd = format!("{} stop {}", self.cfg.agent("claude").command, job_short(&k.id));
+        let short = job_short(&k.id).to_string();
+        match std::process::Command::new("sh").arg("-c").arg(&cmd).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+            Ok(mut child) => {
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                self.say(format!("stopping background job {short}"), Tone::Ok);
+            }
+            Err(e) => self.say(format!("could not run {cmd}: {e}"), Tone::Err),
+        }
     }
 
     fn observe(&mut self, k: RunKey) {
@@ -1036,6 +1163,7 @@ impl App {
             self.focus_ws(ws);
             return;
         }
+        self.enter_session_project(&k);
         let Some(root) = self.project.clone() else { return };
         let mut layout = Layout::empty();
         // Read-only view: the conversation where the terminal would be,
@@ -1063,6 +1191,13 @@ impl App {
     }
 
     pub fn focus_ws(&mut self, id: u64) {
+        // The open project follows the session, so going back, splitting
+        // or resuming from here stays in the session's own project.
+        if let Some(root) = self.workspaces.iter().find(|w| w.id == id).map(|w| w.project.clone()) {
+            if self.project.as_deref() != Some(root.as_str()) {
+                self.open_project(root);
+            }
+        }
         self.active_ws = Some(id);
         self.view = View::Focus;
         let panes = self.workspaces.iter().find(|w| w.id == id).map(|w| w.layout.terms()).unwrap_or_default();
@@ -1369,19 +1504,27 @@ impl App {
 
     fn save_layout_of(&self, id: u64) {
         let Some(ws) = self.workspaces.iter().find(|w| w.id == id) else { return };
-        if ws.observed.is_some() || !ws.template {
+        if !ws.template {
             return;
         }
+        if let Some(spec) = self.layout_spec_of(id) {
+            layout::save_template(&Self::project_key(&ws.project), &spec);
+        }
+    }
+
+    /// A session's layout as a template: its first terminal is the agent's.
+    fn layout_spec_of(&self, id: u64) -> Option<layout::NodeSpec> {
+        let ws = self.workspaces.iter().find(|w| w.id == id)?;
+        if ws.observed.is_some() {
+            return None;
+        }
         let slot = std::cell::Cell::new(0usize);
-        let spec = ws.layout.to_spec(|p| {
+        ws.layout.to_spec(|p| {
             let n = slot.get();
             let role = self.panes.get(&p).map(|x| if x.kind == PaneKind::Shell && n > 0 { "shell" } else { "agent" }).unwrap_or("shell");
             slot.set(n + 1);
             Some((n, role.to_string()))
-        });
-        if let Some(spec) = spec {
-            layout::save_template(&Self::project_key(&ws.project), &spec);
-        }
+        })
     }
 
     fn save_layouts(&self) {
@@ -1426,7 +1569,11 @@ impl App {
     }
 
     fn restore_workspaces(&mut self, root: &str) -> usize {
-        let indexed: HashSet<String> = self.shared.lock().unwrap().sessions.keys().map(|k| k.id.clone()).collect();
+        // Sessions this project may resume: indexed, and its own. A saved
+        // link to another project's session (from a pane linked to the
+        // wrong session) must not bring that conversation back here, where
+        // its tools would run in the wrong folder.
+        let indexed: HashSet<String> = self.shared.lock().unwrap().sessions.values().filter(|s| s.root.is_empty() || s.root == root).map(|s| s.key.id.clone()).collect();
         let live: HashSet<u64> = self
             .server
             .as_ref()
@@ -1623,13 +1770,7 @@ impl App {
         match k.code {
             KeyCode::Char('r') => {
                 if let Some(o) = self.active().and_then(|w| w.observed.clone()) {
-                    let live = self.shared.lock().unwrap().runs.get(&o).map(|r| r.is_live()).unwrap_or(false);
-                    if live {
-                        self.say("running in another terminal; resume it there or stop it first", Tone::Warn);
-                    } else {
-                        let pk = if o.kind == AgentKind::Codex { PaneKind::Codex } else { PaneKind::Claude };
-                        self.new_workspace(Some(pk), Launch::resume(o));
-                    }
+                    self.resume_session(o);
                 }
             }
             KeyCode::Esc => self.act(Act::Back),
@@ -1697,6 +1838,13 @@ impl App {
                 if self.view == View::Focus {
                     self.add_terminal(kind)
                 } else {
+                    // On the projects list, the highlighted project, not
+                    // whichever one was opened last.
+                    if self.view == View::Projects {
+                        if let Some(root) = self.selected_project_root() {
+                            self.open_project(root);
+                        }
+                    }
                     self.new_workspace(if kind == PaneKind::Shell { None } else { Some(kind) }, Launch::default())
                 }
             }
@@ -1892,14 +2040,9 @@ impl App {
                 return;
             }
         }
-        let live = self.shared.lock().unwrap().runs.get(&key).map(|r| r.is_live()).unwrap_or(false);
-        if resume && !live {
-            let pk = if key.kind == AgentKind::Codex { PaneKind::Codex } else { PaneKind::Claude };
-            self.new_workspace(Some(pk), Launch::resume(key));
+        if resume {
+            self.resume_session(key);
         } else {
-            if resume {
-                self.say("that session is running in another terminal; opening it read-only", Tone::Warn);
-            }
             self.wants.lock().unwrap().pinned.insert(key.clone());
             self.observe(key);
         }
@@ -2083,7 +2226,7 @@ impl App {
             }
             KeyCode::Char('.') => self.show_hidden = !self.show_hidden,
             KeyCode::Char('a') => {
-                self.overlay = Some(Overlay::Input { prompt: "add a project folder".into(), value: "~/".into(), kind: InputKind::AddProject, secret: false })
+                self.overlay = Some(Overlay::Input { prompt: "project folder (missing folders are created)".into(), value: "~/".into(), kind: InputKind::AddProject, secret: false })
             }
             KeyCode::Char('n') | KeyCode::Char('c') | KeyCode::Char('x') => {
                 if let Some(root) = self.selected_project_root() {
@@ -2215,6 +2358,8 @@ impl App {
                         CardKind::Observed(k) | CardKind::Recent(k) => {
                             if let Some(id) = self.workspaces.iter().find(|w| w.observed.as_ref() == Some(&k)).map(|w| w.id) {
                                 self.close_workspace(id, true);
+                            } else if self.marks.is_empty() {
+                                self.close_unhosted(k);
                             }
                         }
                     }
@@ -2584,7 +2729,7 @@ impl App {
                     "new" => vec!["claude".into(), "codex".into(), "terminal".into()],
                     "worktree" => vec!["claude".into(), "codex".into()],
                     "yank" => ["resume", "id", "folder", "title", "reply", "files", "plan"].iter().map(|s| s.to_string()).collect(),
-                    "layout" => vec!["save".into(), "reset".into()],
+                    "layout" => vec!["save".into(), "default".into(), "reset".into()],
                     "preset" => self.project.as_ref().map(|r| [self.cfg.presets_for(r, "claude"), self.cfg.presets_for(r, "codex")].concat().into_iter().map(|p| p.name).collect()).unwrap_or_default(),
                     "project" => {
                         let snap = self.shared.lock().unwrap();
@@ -2723,13 +2868,20 @@ impl App {
                     self.save_layout_of(id);
                     self.say("saved this layout for the project's new sessions", Tone::Ok);
                 }
+                ("default", Some(id)) => match self.layout_spec_of(id) {
+                    Some(spec) => {
+                        layout::save_default(&spec);
+                        self.say("saved this layout as the default for new sessions everywhere", Tone::Ok);
+                    }
+                    None => self.say("a read-only view has no layout to save; open a running session", Tone::Info),
+                },
                 ("reset", _) => {
                     if let Some(root) = self.project.clone() {
                         let _ = std::fs::remove_file(layout::layouts_dir().join(format!("{}.toml", Self::project_key(&root))));
                         self.say("new sessions here use the default layout again", Tone::Ok);
                     }
                 }
-                _ => self.say("layout save (inside a session) or layout reset", Tone::Info),
+                _ => self.say("inside a session: layout save (this project) or layout default (everywhere); layout reset", Tone::Info),
             },
             "help" | "keys" => self.overlay = Some(Overlay::Help),
             "quit" | "q" => self.ask_quit(),
@@ -3167,10 +3319,20 @@ impl App {
                 }
             },
             InputKind::AddProject => {
-                let p = config::expand(value.trim());
-                if !p.is_dir() {
-                    self.say(format!("{} is not a folder", p.display()), Tone::Err);
+                let p = project_path(value.trim());
+                if p.as_os_str().is_empty() {
                     return;
+                }
+                if p.exists() && !p.is_dir() {
+                    self.say(format!("{} is a file, not a folder", config::display_path(&p)), Tone::Err);
+                    return;
+                }
+                if !p.exists() {
+                    if let Err(e) = std::fs::create_dir_all(&p) {
+                        self.say(format!("could not create {}: {e}", config::display_path(&p)), Tone::Err);
+                        return;
+                    }
+                    self.say(format!("created {}", config::display_path(&p)), Tone::Ok);
                 }
                 let root = store::git_root(&p).unwrap_or_else(|| p.to_string_lossy().to_string());
                 if !self.cfg.projects.extra.contains(&root) {
@@ -3215,6 +3377,7 @@ impl App {
             Action::RevertHunk(leaf, i) => self.revert_hunk(leaf, i),
             Action::CloseWorkspace(id) => self.close_workspace(id, true),
             Action::CloseLeaf(l) => self.close_leaf(l, true),
+            Action::StopJob(k) => self.stop_job(&k),
             Action::ImportEnv(root) => {
                 match secrets::import_env(Path::new(&root)) {
                     Ok(keys) => self.say(format!("moved {} key{} into the keyring", keys.len(), if keys.len() == 1 { "" } else { "s" }), Tone::Ok),
@@ -3736,6 +3899,21 @@ impl App {
     }
 }
 
+/// Where a typed project folder lives: `~` expands, and a relative path
+/// like `Dev/new-thing` is taken from home, not from wherever polypore
+/// happened to start.
+pub fn project_path(typed: &str) -> PathBuf {
+    let typed = typed.trim_end_matches('/');
+    if typed.is_empty() {
+        return PathBuf::new();
+    }
+    let p = config::expand(typed);
+    if p.is_absolute() {
+        return p;
+    }
+    dirs::home_dir().map(|h| h.join(&p)).unwrap_or(p)
+}
+
 fn group_of(s: RunState) -> u8 {
     match s {
         RunState::NeedsInput => 0,
@@ -3755,6 +3933,7 @@ pub fn agent_command(cfg: &Config, kind: PaneKind, launch: &Launch) -> Option<St
         PaneKind::Claude => {
             let base = format!("{}{extra}", cfg.agent("claude").command);
             Some(match &launch.resume {
+                Some(k) if launch.attach => format!("{} attach {}", cfg.agent("claude").command, job_short(&k.id)),
                 Some(k) if launch.fork => format!("{base} --resume {} --fork-session{prompt}", k.id),
                 Some(k) => format!("{base} --resume {}{prompt}", k.id),
                 None => format!("{base}{prompt}"),
@@ -3771,6 +3950,12 @@ pub fn agent_command(cfg: &Config, kind: PaneKind, launch: &Launch) -> Option<St
         }
         PaneKind::Shell => None,
     }
+}
+
+/// The id claude's background jobs go by (`claude agents`, `attach`,
+/// `stop`): the session id's first eight characters.
+pub fn job_short(id: &str) -> &str {
+    id.get(..8).unwrap_or(id)
 }
 
 fn preset_launch(p: Option<&crate::config::Preset>) -> Launch {
@@ -3810,7 +3995,7 @@ pub const COMMANDS: &[(&str, &str, &str)] = &[
     ("project", "name", "open a project"),
     ("theme", "name", "switch the theme"),
     ("awake", "", "stay awake on or off"),
-    ("layout", "save|reset", "this layout for new sessions, or the default"),
+    ("layout", "save|default|reset", "this layout for the project's new sessions, for every project's, or back to the default"),
     ("projects", "", "the project list"),
     ("dash", "", "this project's sessions"),
     ("skills", "", "the skills screen"),

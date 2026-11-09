@@ -490,16 +490,37 @@ impl App {
             }
             View::Dash if !self.marks.is_empty() => vec![("i".into(), "prompt all"), ("r".into(), "resume all"), ("A".into(), "archive"), ("d".into(), "close"), ("space".into(), "mark"), ("esc".into(), "clear marks")],
             View::Dash => {
-                let mut v: Vec<(String, &str)> = vec![("enter".into(), "open"), ("i".into(), "prompt"), ("r".into(), "resume"), ("c".into(), "new claude")];
+                let mut v: Vec<(String, &str)> = vec![("enter".into(), "open"), ("i".into(), "prompt"), ("r".into(), "resume")];
+                // Closing only means something for a session that is open.
+                if self.cards.get(self.sel_card).map(|c| c.state != RunState::Closed || matches!(c.kind, CardKind::Hosted(_))).unwrap_or(false) {
+                    v.push(("d".into(), "close"));
+                }
+                v.push(("c".into(), "new claude"));
                 if !self.attention_in(snap).is_empty() {
                     v.insert(0, ("!".into(), "next waiting"));
                 }
                 v.push(("f".into(), "filter"));
                 v.push(("s".into(), "search"));
                 v.push(("space".into(), "mark"));
+                v.push(("esc".into(), "projects"));
                 v
             }
-            View::Focus => vec![(k("q"), "back"), (k("hjkl"), "move"), (k("n"), "split"), (k("a"), "add panel")],
+            View::Focus if self.active().map(|w| w.observed.is_some()).unwrap_or(false) => {
+                // A read-only view takes plain keys.
+                vec![("r".into(), "resume"), ("esc".into(), "back"), ("j k".into(), "scroll"), ("h l".into(), "move"), (k("W"), "close")]
+            }
+            View::Focus => {
+                let mut v: Vec<(String, &str)> = vec![(k("q"), "back"), (k("W"), "close session"), (k("w"), "close pane"), (k("hjkl"), "move"), (k("n"), "split"), (k("a"), "add panel")];
+                // Resizing and swapping only mean something once there are
+                // two panes; the mouse works too (drag a gap or a title).
+                if self.active().map(|w| w.layout.leaves().len() > 1).unwrap_or(false) {
+                    v.push((if self.alt_mode { "alt-shift-arrows".into() } else { k("< > - +") }, "resize"));
+                    v.push((k("HJKL"), "swap"));
+                    v.push((k("o"), "stack/side by side"));
+                    v.push(("drag gap/title".into(), "resize/swap"));
+                }
+                v
+            }
             View::Skills => vec![("s".into(), "link all"), ("a".into(), "adopt"), ("n".into(), "new"), ("e".into(), "edit"), ("d".into(), "drop broken"), ("esc".into(), "back")],
             View::Secrets => vec![("a".into(), "add"), ("i".into(), "import .env"), ("w".into(), "set up agents"), ("d".into(), "delete"), ("esc".into(), "back")],
             View::Stats => vec![("j k".into(), "scroll"), ("r".into(), "refresh"), ("m".into(), "ask a model"), ("o".into(), "open report"), ("esc".into(), "back")],
@@ -1239,6 +1260,33 @@ impl App {
     /// Everything worth knowing about a run that its own terminal does not
     /// show well, in priority order, each section only when it has content.
     #[allow(clippy::too_many_arguments)]
+    /// The repo's uncommitted files modified since the session's earliest
+    /// logged activity, newest first: (path, added, removed, mtime). Deleted
+    /// files have no mtime and always count.
+    fn git_touched(&self, root: &str, run: &AgentRun) -> Vec<(String, u32, u32, i64)> {
+        let since = run.events.front().map(|e| e.ts).unwrap_or(0);
+        let mut out: Vec<(String, u32, u32, i64)> = Vec::new();
+        for fd in self.hunk_files(root).iter().take(200) {
+            let (a, d) = fd.hunks.iter().fold((0, 0), |(a, d), h| (a + h.added, d + h.removed));
+            if let Some(e) = out.iter_mut().find(|e| e.0 == fd.path) {
+                e.1 += a;
+                e.2 += d;
+                continue;
+            }
+            let mtime = std::fs::metadata(std::path::Path::new(root).join(&fd.path))
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as i64);
+            match mtime {
+                Some(m) if m < since => {}
+                m => out.push((fd.path.clone(), a, d, m.unwrap_or(i64::MAX))),
+            }
+        }
+        out.sort_by(|a, b| b.3.cmp(&a.3));
+        out
+    }
+
     fn draw_inspector(&mut self, f: &mut Frame, r: Rect, run: &AgentRun, state: RunState, opts: InspectOpts, tick: u64, now: i64) {
         let t = self.theme.clone();
         let w = r.width as usize;
@@ -1313,7 +1361,30 @@ impl App {
         let mut changed: Vec<&FileTouch> = run.files.values().filter(|f| f.edits + f.writes > 0).collect();
         changed.sort_by(|a, b| b.last.cmp(&a.last));
         let reads = run.files.values().filter(|f| f.edits + f.writes == 0).count();
-        if !changed.is_empty() {
+        // Edits made through the shell (sed, a script, a formatter) never
+        // show up as edit tool calls; for a session that is still open, the
+        // repo's uncommitted files it could have touched stand in.
+        let from_git = if changed.is_empty() && state != RunState::Closed && !run.cwd.is_empty() { self.git_touched(&root, run) } else { Vec::new() };
+        if !from_git.is_empty() {
+            let add: u32 = from_git.iter().map(|f| f.1).sum();
+            let del: u32 = from_git.iter().map(|f| f.2).sum();
+            let mut s = vec![rule(&t, "changed", &format!("{}  {} · git", plural(from_git.len(), "file", "files"), diff_text(add, del)), w, t.ok)];
+            for (path, a, d, ts) in from_git.iter().take(8) {
+                let nums = diff_text(*a, *d);
+                let fresh = *ts != i64::MAX && now - ts < 30_000;
+                let name_style = if fresh { Style::default().fg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.fg) };
+                let mut row = path_spans(&t, path, w.saturating_sub(nums.width() + 2), name_style);
+                let used: usize = row.iter().map(|s| s.width()).sum();
+                row.push(Span::raw(" ".repeat(w.saturating_sub(used + nums.width()))));
+                row.extend(diff_spans(&t, *a, *d));
+                s.push(Line::from(row));
+            }
+            if from_git.len() > 8 {
+                s.push(Line::from(Span::styled(format!("  and {} more", from_git.len() - 8), t.faint())));
+            }
+            s.push(Line::from(Span::styled(format!("uncommitted and modified since this session started{}", if reads > 0 { format!(" · read {}", plural(reads, "file", "files")) } else { String::new() }), t.faint())));
+            sections.push(s);
+        } else if !changed.is_empty() {
             let add: u32 = changed.iter().map(|f| f.added).sum();
             let del: u32 = changed.iter().map(|f| f.removed).sum();
             let mut s = vec![rule(&t, "changed", &format!("{}  {}", plural(changed.len(), "file", "files"), diff_text(add, del)), w, t.ok)];
@@ -1336,22 +1407,33 @@ impl App {
             }
             sections.push(s);
         } else if reads > 0 {
-            sections.push(vec![rule(&t, "changed", "nothing yet", w, t.ok), Line::from(Span::styled(format!("read {}", plural(reads, "file", "files")), t.faint()))]);
-        }
-        // problems
-        let mut fails: Vec<(String, u32, i64)> = Vec::new();
-        for c in run.cmds.iter().rev().take(40).filter(|c| c.ok == Some(false)) {
-            let key = trunc(&c.cmd, 60);
-            if let Some(e) = fails.iter_mut().find(|e| e.0 == key) {
-                e.1 += 1;
-            } else {
-                fails.push((key, 1, c.ts));
+            // Nothing changed yet: the files it is looking at, newest first.
+            let mut read: Vec<&FileTouch> = run.files.values().collect();
+            read.sort_by(|a, b| b.last.cmp(&a.last));
+            let mut s = vec![rule(&t, "read", &format!("{} · nothing changed yet", plural(reads, "file", "files")), w, t.info)];
+            for ft in read.iter().take(5) {
+                let when = ago(now, ft.last);
+                let fresh = now - ft.last < 30_000;
+                let name_style = if fresh { Style::default().fg(t.accent).add_modifier(Modifier::BOLD) } else { Style::default().fg(t.dim) };
+                let mut row = path_spans(&t, &rel_path(&ft.path, &root), w.saturating_sub(when.width() + 2), name_style);
+                let used: usize = row.iter().map(|s| s.width()).sum();
+                row.push(Span::raw(" ".repeat(w.saturating_sub(used + when.width()))));
+                row.push(Span::styled(when, t.faint()));
+                s.push(Line::from(row));
             }
+            if reads > 5 {
+                s.push(Line::from(Span::styled(format!("  and {} more", reads - 5), t.faint())));
+            }
+            sections.push(s);
         }
-        let api_errors: Vec<&Event> = run.errors.iter().rev().filter(|e| e.text.starts_with("api error")).take(2).collect();
+        // problems: this turn's failures that have not been fixed since
+        let fails = run.open_problems(now);
+        let since = run.turn_start().unwrap_or(now - 15 * 60_000);
+        let api_errors: Vec<&Event> = run.errors.iter().rev().filter(|e| e.ts >= since && e.text.starts_with("api error")).take(2).collect();
         if !fails.is_empty() || !api_errors.is_empty() {
             let n: u32 = fails.iter().map(|f| f.1).sum();
-            let mut s = vec![rule(&t, "problems", &format!("{} failed recently", plural(n as usize, "command", "commands")), w, t.err)];
+            let what = if n > 0 { format!("{} failed this turn", plural(n as usize, "command", "commands")) } else { "this turn".to_string() };
+            let mut s = vec![rule(&t, "problems", &what, w, t.err)];
             for (cmd, n, ts) in fails.iter().take(4) {
                 let tail = if *n > 1 { format!("  {n}×") } else { format!("  {}", ago(now, *ts)) };
                 s.push(Line::from(vec![
@@ -2108,7 +2190,7 @@ impl App {
                     row(if self.alt_mode { "alt-shift-arrows".into() } else { k("< > - +") }, "resize"),
                     row(format!("{} {} {}", k("n"), k("c"), k("x")), "split: terminal, claude, codex"),
                     row(format!("{} {} {}", k("a"), k("w"), k("W")), "add panel · close pane · session"),
-                    row(format!("{} {}", k("z"), k("o")), "zoom · turn the split around"),
+                    row(format!("{} {}", k("z"), k("o")), "zoom · stack / side by side"),
                     row(if self.alt_mode { "alt-pgup alt-pgdn".into() } else { k("[ ]") }, "previous / next open session"),
                     row(format!("{} {}", k("g"), k("s")), "next waiting · stay awake"),
                     row(k(":"), "command line"),

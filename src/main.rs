@@ -23,6 +23,7 @@ mod search;
 mod skills;
 mod sleep;
 mod sources;
+mod wake;
 mod stats_view;
 mod store;
 mod theme;
