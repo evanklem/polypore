@@ -1,73 +1,78 @@
 name: release
 
+# Push a tag that matches Cargo.toml's version (v0.2.0 for version = "0.2.0")
+# and this builds the binaries and publishes a GitHub release with them.
 on:
   push:
-    tags: ['v*']
+    tags: ['v[0-9]*']
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    permissions:
-      contents: write
     strategy:
       fail-fast: false
-      # Serialize the matrix: every job read-modify-writes the single shared
-      # updater manifest (latest.json) on the draft release. Running them in
-      # parallel races the delete-then-upload, and the loser hits
-      # "404 Not Found - delete-a-release-asset". One job at a time avoids it.
-      max-parallel: 1
       matrix:
         include:
-          - platform: macos-latest
-            args: --target aarch64-apple-darwin
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-          # 22.04 over latest: older glibc keeps the binaries runnable on more distros
-          - platform: ubuntu-22.04
-            args: ''
-          - platform: windows-latest
-            args: ''
-    runs-on: ${{ matrix.platform }}
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04 # older glibc, so the binary runs on more distros
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-latest
+          - target: aarch64-apple-darwin
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
+      - name: tag matches Cargo.toml
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
+          targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          key: ${{ matrix.target }}
 
-      - name: install tauri build deps (linux)
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: keyring build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: package
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            patchelf
+          name=polypore-${{ matrix.target }}
+          mkdir -p "dist/$name"
+          cp target/${{ matrix.target }}/release/polypore README.md LICENSE "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
 
-      - run: npm ci
-
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Polypore ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below. The app updates itself after this install.'
-          releaseDraft: true
-          prerelease: false
-          includeUpdaterJson: true
-          args: ${{ matrix.args }}
+          name: polypore-${{ matrix.target }}
+          path: dist/polypore-${{ matrix.target }}.tar.gz*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: polypore ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
