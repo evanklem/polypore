@@ -2,6 +2,15 @@
 
 This is the Polypore desktop IDE. Skills are bundled at `packages/polyflow/`; built-in plugins live under `plugins/`; the polypore MCP server is at `packages/mcp-server/`; the Tauri shell is `src-tauri/`.
 
+## tui/ — the new terminal dashboard (branch `tui-dash`)
+
+A Rust/ratatui rewrite of Polypore as a terminal dashboard for claude and codex sessions. Self-contained Cargo crate; see `tui/README.md`.
+
+- Verify: `cd tui && cargo build --release && cargo test` (fast, unit tests only).
+- Visual check: run it in a private tmux server (`tmux -L ptest new-session -d -x 200 -y 50 ...`) with `XDG_CONFIG_HOME`/`XDG_STATE_HOME` pointed at a scratch dir, then `tmux capture-pane -p`. Also set `XDG_RUNTIME_DIR` to a short scratch path (unix sockets cap at ~100 bytes) so the test gets its own terminal server, and point `[agents.claude] command` / `[review] command` at stand-in scripts so tests never start a real agent.
+- Terminals live in `polypore server` (src/server.rs); rebuilding does not restart a running server, so kill it (`$XDG_STATE_HOME/polypore/server.pid`) when its protocol changes.
+- Installed copy: `~/.local/bin/polypore-tui` (the old Tauri binary keeps `~/.local/bin/polypore`).
+
 ## MCP — polypore-ide server
 
 The polypore MCP server is registered at the project level via `.mcp.json`. Claude Code starts it automatically when invoked from this directory. The server exposes the following tool namespaces:

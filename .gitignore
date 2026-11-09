@@ -14,6 +14,7 @@
 
 # tauri / typescript build output
 /src-tauri/target
+/tui/target
 /tsconfig.tsbuildinfo
 
 # misc
